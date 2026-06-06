@@ -39,7 +39,7 @@ export default function Home() {
           
           <div className="info-box text-font border-accent">
             Vous êtes un joueur ? <br/><br/>
-            Scannez le QR code qui sera affiché sur l'écran du Maître du Jeu pour découvrir votre rôle secret !
+            Scannez le QR code ou entrez le lien fourni par le Maître du Jeu pour rejoindre le salon et choisir votre rôle secret !
           </div>
         </div>
       </div>

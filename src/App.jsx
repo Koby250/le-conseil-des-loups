@@ -13,7 +13,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/mj/:roomId" element={<MjDashboard />} />
-            <Route path="/player/:roomId/:playerNum" element={<PlayerScreen />} />
+            <Route path="/player/:roomId" element={<PlayerScreen />} />
           </Routes>
         </div>
       </Router>

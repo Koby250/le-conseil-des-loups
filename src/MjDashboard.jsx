@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, onSnapshot, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 import { rolesData } from './rolesData';
-import { Users, RefreshCw, Eye, Settings, CheckCircle2, XCircle } from 'lucide-react';
+import { Users, RefreshCw, Eye, Settings, Play, Link as LinkIcon } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
 function shuffleArray(array) {
@@ -18,117 +18,88 @@ function shuffleArray(array) {
 
 export default function MjDashboard() {
   const { roomId } = useParams();
-  const [playerCount, setPlayerCount] = useState(8);
-  const [players, setPlayers] = useState([]);
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showConfig, setShowConfig] = useState(true);
-  
+  const [salonData, setSalonData] = useState(null);
+  const [joueurs, setJoueurs] = useState([]);
   const [selectedRoles, setSelectedRoles] = useState([]);
+  const [comedienRoles, setComedienRoles] = useState([]);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
     if (!roomId) return;
-    const unsubscribe = onSnapshot(collection(db, 'rooms', roomId, 'players'), (snapshot) => {
-      const playersList = [];
-      snapshot.forEach((doc) => {
-        playersList.push({ id: doc.id, ...doc.data() });
-      });
-      playersList.sort((a, b) => a.playerNum - b.playerNum);
-      
-      if (playersList.length > 0) {
-        setPlayers(playersList);
-        setShowConfig(false);
+    
+    // Ecoute du salon
+    const unsubSalon = onSnapshot(doc(db, 'salons', roomId), (docSnap) => {
+      if (docSnap.exists()) {
+        setSalonData(docSnap.data());
+      } else {
+        setSalonData(null);
       }
     });
 
-    return () => unsubscribe();
+    // Ecoute des joueurs
+    const unsubJoueurs = onSnapshot(collection(db, 'salons', roomId, 'joueurs'), (snapshot) => {
+      const jList = [];
+      snapshot.forEach((d) => jList.push({ id: d.id, ...d.data() }));
+      setJoueurs(jList);
+    });
+
+    return () => {
+      unsubSalon();
+      unsubJoueurs();
+    };
   }, [roomId]);
 
-  const toggleRoleSelection = (roleId) => {
-    setSelectedRoles(prev => {
-      // Pour autoriser plusieurs fois le même rôle (ex: plusieurs loups), on ajoute simplement l'ID.
-      // Mais ici, l'interface propose des cases à cocher simples (1 par type). 
-      // Si on veut permettre plusieurs loups, on peut ajouter plusieurs fois l'ID dans le tableau.
-      // Pour simplifier l'UI comme demandé : une checkbox = 1 rôle sélectionné. 
-      if (prev.includes(roleId)) {
-        const index = prev.indexOf(roleId);
-        const newRoles = [...prev];
-        newRoles.splice(index, 1);
-        return newRoles;
-      } else {
-        return [...prev, roleId];
-      }
-    });
-  };
-
-  const addRoleInstance = (roleId) => {
-    setSelectedRoles(prev => [...prev, roleId]);
-  };
-
-  const removeRoleInstance = (roleId) => {
+  const addRole = (roleId) => setSelectedRoles(prev => [...prev, roleId]);
+  const removeRole = (roleId) => {
     setSelectedRoles(prev => {
       const index = prev.lastIndexOf(roleId);
       if (index !== -1) {
-        const newRoles = [...prev];
-        newRoles.splice(index, 1);
-        return newRoles;
+        const n = [...prev];
+        n.splice(index, 1);
+        return n;
       }
       return prev;
     });
   };
 
-  const generateDefaultComposition = (count) => {
-    const compo = [];
-    compo.push(rolesData.find(r => r.id === 'voyante'));
-    compo.push(rolesData.find(r => r.id === 'sorciere'));
-    compo.push(rolesData.find(r => r.id === 'cupidon'));
-    
-    const wolfCount = Math.max(1, Math.floor(count / 4));
-    for (let i = 0; i < wolfCount; i++) {
-      compo.push(rolesData.find(r => r.id === 'loup-garou'));
-    }
-    
-    const otherRoles = ['chasseur', 'petite-fille'];
-    let roleIdx = 0;
-    
-    while (compo.length < count) {
-      if (roleIdx < otherRoles.length) {
-         compo.push(rolesData.find(r => r.id === otherRoles[roleIdx]));
-         roleIdx++;
-      } else {
-         compo.push(rolesData.find(r => r.id === 'villageois'));
+  const addComedienRole = (roleId) => {
+    if (comedienRoles.length < 3) setComedienRoles(prev => [...prev, roleId]);
+  };
+  const removeComedienRole = (roleId) => {
+    setComedienRoles(prev => {
+      const index = prev.lastIndexOf(roleId);
+      if (index !== -1) {
+        const n = [...prev];
+        n.splice(index, 1);
+        return n;
       }
-    }
-    return compo.slice(0, count);
+      return prev;
+    });
   };
 
-  const handleGenerateGame = async () => {
-    if (selectedRoles.length > 0 && selectedRoles.length !== playerCount) {
-      alert(`Vous avez sélectionné ${selectedRoles.length} rôles pour ${playerCount} joueurs. Veuillez équilibrer ou vider la sélection pour générer automatiquement.`);
+  const hasComedien = selectedRoles.includes('comedien');
+
+  const handleOpenSalon = async () => {
+    if (selectedRoles.length < 3) {
+      alert("Veuillez sélectionner au moins 3 rôles pour jouer.");
+      return;
+    }
+    if (hasComedien && comedienRoles.length !== 3) {
+      alert("Le rôle du Comédien nécessite exactement 3 rôles supplémentaires disponibles.");
       return;
     }
 
     setIsGenerating(true);
     try {
-      let composition = [];
-      if (selectedRoles.length === playerCount) {
-        composition = selectedRoles.map(id => rolesData.find(r => r.id === id));
-      } else {
-        composition = generateDefaultComposition(playerCount);
-      }
-
-      const shuffledRoles = shuffleArray(composition);
-
-      for (let i = 0; i < playerCount; i++) {
-        const playerRef = doc(db, 'rooms', roomId, 'players', `player_${i + 1}`);
-        await setDoc(playerRef, {
-          playerNum: i + 1,
-          role: shuffledRoles[i],
-          scanned: false,
-          updatedAt: new Date().toISOString()
-        });
-      }
-      setShowConfig(false);
+      const shuffled = shuffleArray([...selectedRoles]);
+      await setDoc(doc(db, 'salons', roomId), {
+        code: roomId,
+        statut: "en_attente",
+        roles_selectionnes: selectedRoles,
+        roles_dispo_comedien: comedienRoles,
+        roles_dispo_comedien_init: comedienRoles, // backup for reset
+        roles_melanges: shuffled
+      });
     } catch (error) {
       console.error("Erreur:", error);
       alert("Erreur de connexion Firebase.");
@@ -137,127 +108,219 @@ export default function MjDashboard() {
     }
   };
 
+  const handleStartGame = async () => {
+    const cartesChoisies = joueurs.filter(j => j.carte_choisie !== null);
+    if (cartesChoisies.length !== salonData.roles_selectionnes.length) {
+       if (!window.confirm(`Seulement ${cartesChoisies.length} joueurs ont choisi une carte sur ${salonData.roles_selectionnes.length} rôles. Lancer quand même la partie ?`)) {
+           return;
+       }
+    }
+    try {
+      await updateDoc(doc(db, 'salons', roomId), {
+        statut: "en_cours"
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Erreur lors du lancement");
+    }
+  };
+
   const handleResetGame = async () => {
-    if (!window.confirm("Voulez-vous recommencer avec de nouveaux rôles ?")) return;
-    setShowConfig(true); // Retourner à la configuration pour choisir
+    if (!window.confirm("Voulez-vous réinitialiser et redistribuer les cartes pour les joueurs connectés ?")) return;
+    
+    try {
+      const shuffled = shuffleArray([...salonData.roles_selectionnes]);
+      const batch = writeBatch(db);
+      
+      batch.update(doc(db, 'salons', roomId), {
+        statut: "en_attente",
+        roles_melanges: shuffled,
+        roles_dispo_comedien: salonData.roles_dispo_comedien_init || []
+      });
+
+      joueurs.forEach(j => {
+        batch.update(doc(db, 'salons', roomId, 'joueurs', j.id), {
+          carte_choisie: null,
+          role: "",
+          statut_joueur: "en_vie"
+        });
+      });
+
+      await batch.commit();
+    } catch (e) {
+      console.error(e);
+      alert("Erreur lors de la réinitialisation");
+    }
   };
 
-  const getPlayerUrl = (playerNum) => {
-    return `${window.location.origin}/player/${roomId}/${playerNum}`;
+  const getPlayerUrl = () => {
+    return `${window.location.origin}/player/${roomId}`;
   };
 
+  if (salonData) {
+    return (
+      <div className="dashboard-container">
+        <ThemeToggle />
+        <header className="dashboard-header">
+          <div className="dashboard-title-box">
+            <h1 className="title-font"><Eye size={28} style={{color: 'var(--primary)'}} /> LE CONSEIL DES LOUPS</h1>
+            <p className="text-font">Code du salon : <span className="room-id glow-text">{roomId}</span></p>
+          </div>
+          
+          <div style={{display: 'flex', gap: '10px', flexDirection: 'column'}}>
+             {salonData.statut === "en_attente" && (
+                <button onClick={handleStartGame} className="btn-primary title-font glow-button" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                  <Play size={18} /> Lancer la partie
+                </button>
+             )}
+             <button onClick={handleResetGame} className="btn-secondary text-font border-accent" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                <RefreshCw size={18} /> Réinitialiser
+             </button>
+          </div>
+        </header>
+
+        <div className="mj-content-grid" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '2rem'}}>
+           <div className="qr-panel glass-panel">
+              <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><LinkIcon size={20} /> Rejoindre le salon</h2>
+              <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Les joueurs doivent scanner ce code ou utiliser le lien pour rejoindre la partie.</p>
+              <div className="qr-wrapper" style={{background: 'white', padding: '15px', borderRadius: '15px', display: 'inline-block'}}>
+                <QRCodeSVG 
+                  value={getPlayerUrl()} 
+                  size={200}
+                  bgColor={"#ffffff"} fgColor={"#000000"} level={"H"} includeMargin={false}
+                />
+              </div>
+              <div className="qr-url text-font" style={{marginTop: '1rem', wordBreak: 'break-all'}}>{getPlayerUrl()}</div>
+           </div>
+
+           <div className="players-table-panel glass-panel">
+              <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><Users size={20} /> Joueurs connectés ({joueurs.length})</h2>
+              {joueurs.length === 0 ? (
+                 <p className="text-font text-muted" style={{fontStyle: 'italic', marginTop: '1rem'}}>En attente de joueurs...</p>
+              ) : (
+                 <div style={{marginTop: '1rem', overflowX: 'auto'}}>
+                    <table style={{width: '100%', textAlign: 'left', borderCollapse: 'collapse'}} className="text-font">
+                       <thead>
+                          <tr style={{borderBottom: '1px solid var(--card-border)'}}>
+                             <th style={{padding: '10px 5px'}}>Nom</th>
+                             <th style={{padding: '10px 5px'}}>Carte</th>
+                             <th style={{padding: '10px 5px'}}>Rôle</th>
+                             <th style={{padding: '10px 5px'}}>Statut</th>
+                          </tr>
+                       </thead>
+                       <tbody>
+                          {joueurs.map(j => {
+                             const roleObj = j.role ? rolesData.find(r => r.id === j.role) : null;
+                             return (
+                                <tr key={j.id} style={{borderBottom: '1px solid var(--card-border)', opacity: j.statut_joueur === 'mort' ? 0.5 : 1}}>
+                                   <td style={{padding: '10px 5px', fontWeight: 'bold'}}>{j.nom}</td>
+                                   <td style={{padding: '10px 5px'}}>{j.carte_choisie !== null ? j.carte_choisie + 1 : '-'}</td>
+                                   <td style={{padding: '10px 5px'}}>
+                                      {roleObj ? <span style={{color: roleObj.color, fontWeight: 'bold'}}>{roleObj.name}</span> : <span className="text-muted">Caché</span>}
+                                   </td>
+                                   <td style={{padding: '10px 5px'}}>
+                                      {j.statut_joueur === 'mort' ? <span className="text-danger">Mort</span> : <span className="text-success">En vie</span>}
+                                   </td>
+                                </tr>
+                             );
+                          })}
+                       </tbody>
+                    </table>
+                 </div>
+              )}
+           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Configuration Phase
   return (
     <div className="dashboard-container">
       <ThemeToggle />
-
       <header className="dashboard-header">
         <div className="dashboard-title-box">
           <h1 className="title-font"><Eye size={28} style={{color: 'var(--primary)'}} /> LE CONSEIL DES LOUPS</h1>
-          <p className="text-font">Code de la table : <span className="room-id glow-text">{roomId}</span></p>
+          <p className="text-font">Nouveau salon : <span className="room-id glow-text">{roomId}</span></p>
         </div>
-        
-        {!showConfig && (
-          <button onClick={handleResetGame} className="btn-secondary text-font border-accent">
-            <RefreshCw size={18} /> Reconfigurer
-          </button>
-        )}
       </header>
 
-      {showConfig ? (
-        <div className="config-box glass-panel">
-          <h2 className="title-font"><Settings size={22} style={{color: 'var(--primary)'}} /> Configuration de la partie</h2>
-          
-          <div style={{marginBottom: '2rem'}}>
-            <label className="text-font" style={{fontWeight: 'bold', color: 'var(--text-color)'}}>Nombre de joueurs</label>
-            <div className="slider-container">
-              <input 
-                type="range" min="4" max="30" 
-                value={playerCount}
-                onChange={(e) => setPlayerCount(parseInt(e.target.value))}
-              />
-              <span className="title-font" style={{fontSize: '2rem', fontWeight: 'bold', color: 'var(--primary)', width: '45px', textAlign: 'center'}}>{playerCount}</span>
+      <div className="config-box glass-panel">
+        <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><Settings size={22} style={{color: 'var(--primary)'}} /> Configuration de la partie</h2>
+        
+        <div style={{marginBottom: '2rem', borderTop: '1px solid var(--card-border)', paddingTop: '1.5rem'}}>
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+            <h3 className="title-font" style={{fontSize: '1.2rem', color: 'var(--text-color)'}}>1. Sélection des rôles</h3>
+            <div className={`role-counter text-font text-success`} style={{fontWeight: 'bold', padding: '0.3rem 0.8rem', background: 'var(--input-bg)', borderRadius: '1rem'}}>
+              {selectedRoles.length} sélectionnés
             </div>
           </div>
-
-          <div style={{marginBottom: '2rem', borderTop: '1px solid var(--card-border)', paddingTop: '1.5rem'}}>
-            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-              <h3 className="title-font" style={{fontSize: '1.2rem', color: 'var(--text-color)'}}>Sélection des rôles (Optionnel)</h3>
-              <div className={`role-counter text-font ${selectedRoles.length > 0 && selectedRoles.length !== playerCount ? 'text-danger' : 'text-success'}`} style={{fontWeight: 'bold', padding: '0.3rem 0.8rem', background: 'var(--input-bg)', borderRadius: '1rem'}}>
-                {selectedRoles.length} / {playerCount}
-              </div>
-            </div>
-            <p className="text-font" style={{fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem'}}>Si vous laissez la sélection vide (0/{playerCount}), une composition équilibrée sera générée automatiquement.</p>
-            
-            <div className="roles-grid">
-              {rolesData.map(role => {
-                const count = selectedRoles.filter(id => id === role.id).length;
-                return (
-                  <div key={role.id} className="role-selector-item glass-panel">
-                    <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1}}>
-                      <div className="role-color-dot" style={{backgroundColor: role.color}}></div>
-                      <span className="text-font" style={{fontSize: '0.85rem', fontWeight: '600'}}>{role.name}</span>
-                    </div>
-                    <div className="role-counter-controls">
-                      <button onClick={() => removeRoleInstance(role.id)} disabled={count === 0} className="role-btn">-</button>
-                      <span className="role-count text-font">{count}</span>
-                      <button onClick={() => addRoleInstance(role.id)} className="role-btn">+</button>
-                    </div>
+          <p className="text-font" style={{fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem'}}>
+             Ajoutez les rôles qui seront présents dans la partie. Le nombre de rôles correspondra au nombre de joueurs max.
+          </p>
+          
+          <div className="roles-grid">
+            {rolesData.map(role => {
+              const count = selectedRoles.filter(id => id === role.id).length;
+              return (
+                <div key={role.id} className="role-selector-item glass-panel">
+                  <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1}}>
+                    <div className="role-color-dot" style={{backgroundColor: role.color}}></div>
+                    <span className="text-font" style={{fontSize: '0.85rem', fontWeight: '600'}}>{role.name}</span>
                   </div>
-                );
-              })}
-            </div>
-            {selectedRoles.length > 0 && (
-              <button onClick={() => setSelectedRoles([])} className="btn-secondary text-font" style={{marginTop: '1rem', width: '100%', justifyContent: 'center'}}>
-                Vider la sélection
-              </button>
-            )}
+                  <div className="role-counter-controls">
+                    <button onClick={() => removeRole(role.id)} disabled={count === 0} className="role-btn">-</button>
+                    <span className="role-count text-font">{count}</span>
+                    <button onClick={() => addRole(role.id)} className="role-btn">+</button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
+          {selectedRoles.length > 0 && (
+            <button onClick={() => setSelectedRoles([])} className="btn-secondary text-font" style={{marginTop: '1rem', width: '100%', justifyContent: 'center'}}>
+              Vider la sélection
+            </button>
+          )}
+        </div>
 
-          <button onClick={handleGenerateGame} disabled={isGenerating} className="btn-primary title-font glow-button" style={{display: 'flex', justifyContent: 'center', gap: '10px'}}>
-            {isGenerating ? <RefreshCw className="spinner" style={{width: 20, height: 20, borderTopColor: 'white'}} /> : <Users size={20} />}
-            {isGenerating ? "Génération..." : "Ouvrir la table"}
-          </button>
-        </div>
-      ) : (
-        <div>
-          <p className="player-grid-instructions text-font">Cliquez sur un joueur pour afficher son QR code. Les scannés seront mis en évidence avec une aura magique.</p>
-          
-          <div className="player-grid">
-            {players.map((player) => (
-              <button
-                key={player.playerNum}
-                onClick={() => setSelectedPlayer(player.playerNum)}
-                className={`player-card glass-panel ${player.scanned ? 'scanned glow-border' : ''}`}
-              >
-                {player.scanned && <CheckCircle2 size={24} className="check-icon" />}
-                <span className="player-number title-font">{player.playerNum}</span>
-                <span className="player-status text-font">{player.scanned ? 'Prêt' : 'En attente'}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+        {hasComedien && (
+           <div style={{marginBottom: '2rem', borderTop: '1px solid var(--card-border)', paddingTop: '1.5rem', background: 'rgba(251, 191, 36, 0.05)', borderRadius: '10px', padding: '1rem'}}>
+             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+               <h3 className="title-font" style={{fontSize: '1.2rem', color: '#fbbf24'}}>2. Rôles pour le Comédien</h3>
+               <div className={`role-counter text-font ${comedienRoles.length !== 3 ? 'text-danger' : 'text-success'}`} style={{fontWeight: 'bold', padding: '0.3rem 0.8rem', background: 'var(--input-bg)', borderRadius: '1rem'}}>
+                 {comedienRoles.length} / 3
+               </div>
+             </div>
+             <p className="text-font" style={{fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem'}}>
+                Le Comédien a été sélectionné. Vous devez obligatoirement choisir 3 rôles supplémentaires dans lesquels il pourra piocher.
+             </p>
+             <div className="roles-grid">
+               {rolesData.map(role => {
+                 const count = comedienRoles.filter(id => id === role.id).length;
+                 return (
+                   <div key={`com-${role.id}`} className="role-selector-item glass-panel" style={{borderColor: count > 0 ? '#fbbf24' : ''}}>
+                     <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1}}>
+                       <div className="role-color-dot" style={{backgroundColor: role.color}}></div>
+                       <span className="text-font" style={{fontSize: '0.85rem', fontWeight: '600'}}>{role.name}</span>
+                     </div>
+                     <div className="role-counter-controls">
+                       <button onClick={() => removeComedienRole(role.id)} disabled={count === 0} className="role-btn">-</button>
+                       <span className="role-count text-font">{count}</span>
+                       <button onClick={() => addComedienRole(role.id)} disabled={comedienRoles.length >= 3} className="role-btn">+</button>
+                     </div>
+                   </div>
+                 );
+               })}
+             </div>
+           </div>
+        )}
 
-      {selectedPlayer && (
-        <div className="modal-overlay">
-          <div className="modal-content glass-panel border-accent">
-            <button onClick={() => setSelectedPlayer(null)} className="close-btn"><XCircle size={32} /></button>
-            
-            <h3 className="title-font" style={{fontSize: '1.8rem', marginBottom: '0.5rem', color: 'var(--text-color)'}}>Joueur {selectedPlayer}</h3>
-            <p className="text-font" style={{color: 'var(--text-muted)', fontSize: '0.9rem'}}>Faites scanner ce code par le joueur.</p>
-            
-            <div className="qr-wrapper">
-              <QRCodeSVG 
-                value={getPlayerUrl(selectedPlayer)} 
-                size={220}
-                bgColor={"#ffffff"} fgColor={"#000000"} level={"H"} includeMargin={false}
-              />
-            </div>
-            
-            <div className="qr-url text-font">{getPlayerUrl(selectedPlayer)}</div>
-          </div>
-        </div>
-      )}
+        <button onClick={handleOpenSalon} disabled={isGenerating || selectedRoles.length < 3 || (hasComedien && comedienRoles.length !== 3)} className="btn-primary title-font glow-button" style={{display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '1rem'}}>
+          {isGenerating ? <RefreshCw className="spinner" style={{width: 20, height: 20, borderTopColor: 'white'}} /> : <Users size={20} />}
+          {isGenerating ? "Génération..." : "Ouvrir le salon"}
+        </button>
+      </div>
 
       <footer className="author-signature text-font">
         Fait par KOBCODE (Koby YZD)
