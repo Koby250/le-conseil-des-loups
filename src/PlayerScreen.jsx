@@ -26,6 +26,8 @@ export default function PlayerScreen() {
   // UI states for powers
   const [showVoleurModal, setShowVoleurModal] = useState(false);
   const [showComedienModal, setShowComedienModal] = useState(false);
+  const [showCupidonModal, setShowCupidonModal] = useState(false);
+  const [cupidonSelection, setCupidonSelection] = useState([]);
 
   // Subscribe to Salon and Joueurs
   useEffect(() => {
@@ -65,6 +67,39 @@ export default function PlayerScreen() {
       }
     }
   }, [playerId, joueurs]);
+
+  useEffect(() => {
+    if (!salonData?.couple || salonData.couple.length !== 2 || !me) return;
+    
+    // Check if I am in the couple and I am alive, but my partner is dead
+    const amInCouple = salonData.couple.includes(me.id);
+    if (amInCouple && me.statut_joueur !== 'mort') {
+      const partnerId = salonData.couple.find(id => id !== me.id);
+      const partner = joueurs.find(j => j.id === partnerId);
+      if (partner && partner.statut_joueur === 'mort') {
+        updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
+          statut_joueur: 'mort'
+        }).catch(console.error);
+      }
+    }
+
+    // Check if both are dead, and if I am Cupid, check if I should die
+    if (me.role === 'cupidon' && me.statut_joueur !== 'mort') {
+      const p1 = joueurs.find(j => j.id === salonData.couple[0]);
+      const p2 = joueurs.find(j => j.id === salonData.couple[1]);
+      
+      if (p1?.statut_joueur === 'mort' && p2?.statut_joueur === 'mort') {
+        const p1Loup = p1.role?.toLowerCase().includes('loup') || p1.statut_joueur === 'infecte';
+        const p2Loup = p2.role?.toLowerCase().includes('loup') || p2.statut_joueur === 'infecte';
+        
+        if (!p1Loup && !p2Loup) {
+          updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
+            statut_joueur: 'mort'
+          }).catch(console.error);
+        }
+      }
+    }
+  }, [joueurs, salonData?.couple, me, roomId]);
 
   const handleJoin = async (e) => {
     e.preventDefault();
@@ -175,6 +210,31 @@ export default function PlayerScreen() {
     } catch (err) {
       console.error('Erreur lors du vol:', err);
       alert('Erreur lors du vol : ' + (err.message || 'Erreur inconnue'));
+    }
+  };
+
+  const handleCupidonAction = async () => {
+    if (cupidonSelection.length !== 2) {
+      alert("Veuillez sélectionner exactement deux joueurs.");
+      return;
+    }
+    try {
+      await runTransaction(db, async (transaction) => {
+        const salonRef = doc(db, 'salons', roomId);
+        const meRef = doc(db, 'salons', roomId, 'joueurs', me.id);
+        
+        transaction.update(salonRef, {
+          couple: cupidonSelection
+        });
+        transaction.update(meRef, {
+          pouvoir_utilise: true
+        });
+      });
+      setShowCupidonModal(false);
+      alert("Le couple a été formé avec succès !");
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de la formation du couple.");
     }
   };
 
@@ -323,8 +383,8 @@ export default function PlayerScreen() {
 
   // Phase 2: In Game (statut === "en_cours" or "nuit_0")
   const isDead = me.statut_joueur === "mort";
-  // Cibles valides pour le Voleur : tous les autres joueurs avec un rôle assigné
-  const voleurTargets = joueurs.filter(j => j.id !== me.id && j.role);
+  // Cibles valides pour le Voleur : tous les autres joueurs avec un rôle assigné et en vie
+  const voleurTargets = joueurs.filter(j => j.id !== me.id && j.role && j.statut_joueur !== "mort");
   const otherAlivePlayers = joueurs.filter(j => j.id !== me.id && j.statut_joueur !== "mort");
 
 
@@ -353,6 +413,21 @@ export default function PlayerScreen() {
               </button>
            )}
         </div>
+
+        {/* INFO COUPLE */}
+        {salonData?.couple?.includes(me.id) && (
+           <div style={{marginTop: '1rem', padding: '10px', background: 'rgba(236, 72, 153, 0.2)', border: '1px solid #ec4899', borderRadius: '8px', color: '#ec4899'}}>
+              {(() => {
+                const partnerId = salonData.couple.find(id => id !== me.id);
+                const partner = joueurs.find(j => j.id === partnerId);
+                if (partner) {
+                  const pRole = rolesData.find(r => r.id === partner.role)?.name || partner.role;
+                  return <strong>❤️ Vous êtes en couple avec {partner.nom} ({pRole})</strong>;
+                }
+                return null;
+              })()}
+           </div>
+        )}
 
         {/* Powers Section */}
         {!isDead && (
@@ -384,6 +459,17 @@ export default function PlayerScreen() {
                     Incarner un Rôle
                  </button>
               )}
+
+              {/* CUPIDON */}
+              {me.role === 'cupidon' && !me.pouvoir_utilise && salonData.statut === 'nuit_0' && (
+                 <button 
+                   onClick={() => setShowCupidonModal(true)} 
+                   className="btn-primary title-font glow-button" 
+                   style={{width: '100%', marginBottom: '1rem', background: '#ec4899', border: 'none'}}
+                 >
+                    Former le Couple
+                 </button>
+              )}
            </div>
         )}
 
@@ -409,10 +495,9 @@ export default function PlayerScreen() {
               
               <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                  {voleurTargets.map(p => {
-                    const pRoleData = rolesData.find(r => r.id === p.role);
                     return (
                       <button key={p.id} onClick={() => handleVoleurAction(p.id)} className="btn-secondary text-font" style={{justifyContent: 'flex-start'}}>
-                         Voler {p.nom} {pRoleData ? `(${pRoleData.name})` : ''}
+                         Voler {p.nom}
                       </button>
                     );
                  })}
@@ -441,6 +526,40 @@ export default function PlayerScreen() {
                  })}
               </div>
               <button onClick={() => setShowComedienModal(false)} className="btn-secondary text-font" style={{marginTop: '1.5rem', width: '100%', justifyContent: 'center'}}>Annuler</button>
+           </div>
+        </div>
+      )}
+
+      {showCupidonModal && (
+        <div className="modal-overlay">
+           <div className="modal-content glass-panel border-accent" style={{borderColor: '#ec4899'}}>
+              <h3 className="title-font" style={{marginBottom: '1rem', color: '#ec4899'}}>Action de Cupidon</h3>
+              <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Choisissez deux joueurs pour former le couple.</p>
+              
+              <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                 {otherAlivePlayers.map(p => {
+                    const isSelected = cupidonSelection.includes(p.id);
+                    return (
+                       <button 
+                         key={p.id} 
+                         onClick={() => {
+                           if (isSelected) setCupidonSelection(cupidonSelection.filter(id => id !== p.id));
+                           else if (cupidonSelection.length < 2) setCupidonSelection([...cupidonSelection, p.id]);
+                         }} 
+                         className="btn-secondary text-font" 
+                         style={{
+                           justifyContent: 'flex-start',
+                           borderColor: isSelected ? '#ec4899' : 'var(--card-border)',
+                           background: isSelected ? 'rgba(236, 72, 153, 0.2)' : 'transparent'
+                         }}
+                       >
+                          {p.nom}
+                       </button>
+                    )
+                 })}
+              </div>
+              <button onClick={handleCupidonAction} className="btn-primary title-font glow-button" style={{marginTop: '1.5rem', width: '100%', justifyContent: 'center', background: '#ec4899', border: 'none'}} disabled={cupidonSelection.length !== 2}>Valider le couple</button>
+              <button onClick={() => setShowCupidonModal(false)} className="btn-secondary text-font" style={{marginTop: '0.5rem', width: '100%', justifyContent: 'center'}}>Annuler</button>
            </div>
         </div>
       )}

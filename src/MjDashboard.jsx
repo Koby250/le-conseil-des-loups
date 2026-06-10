@@ -99,7 +99,8 @@ export default function MjDashboard() {
         roles_selectionnes: selectedRoles,
         roles_dispo_comedien: comedienRoles,
         roles_dispo_comedien_init: comedienRoles, // backup for reset
-        roles_melanges: shuffled
+        roles_melanges: shuffled,
+        couple: []
       });
     } catch (error) {
       console.error("Erreur:", error);
