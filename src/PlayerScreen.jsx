@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { collection, doc, getDoc, setDoc, updateDoc, onSnapshot, writeBatch, arrayRemove } from 'firebase/firestore';
+import { collection, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction, writeBatch, arrayRemove } from 'firebase/firestore';
+
 import { db } from './firebase';
 import { rolesData } from './rolesData';
 import { ShieldAlert, AlertTriangle, EyeOff, User, Send, Play } from 'lucide-react';
@@ -115,39 +116,65 @@ export default function PlayerScreen() {
 
   const handleVoleurAction = async (targetPlayerId) => {
     if (!me || me.role !== 'voleur' || me.pouvoir_utilise) return;
-    
+
     const targetPlayer = joueurs.find(j => j.id === targetPlayerId);
-    if (!targetPlayer) return;
+    if (!targetPlayer || !targetPlayer.role) {
+      alert("Ce joueur n'a pas encore de rôle assigné.");
+      return;
+    }
 
     if (!window.confirm(`Êtes-vous sûr de vouloir voler le rôle de ${targetPlayer.nom} ?`)) return;
 
     try {
-      const batch = writeBatch(db);
-      
-      // Update Me
-      batch.update(doc(db, 'salons', roomId, 'joueurs', me.id), {
-        role: targetPlayer.role,
-        pouvoir_utilise: true
+      const stolenRoleData = rolesData.find(r => r.id === targetPlayer.role);
+      // Vérification : le nom du rôle contient-il "loup" (insensible à la casse) ?
+      const isLoup = stolenRoleData?.name?.toLowerCase().includes('loup') || false;
+
+      await runTransaction(db, async (transaction) => {
+        // Lecture fraîche du voleur et de la cible
+        const voleurRef = doc(db, 'salons', roomId, 'joueurs', me.id);
+        const targetRef = doc(db, 'salons', roomId, 'joueurs', targetPlayerId);
+
+        const voleurSnap = await transaction.get(voleurRef);
+        const targetSnap = await transaction.get(targetRef);
+
+        if (!voleurSnap.exists() || !targetSnap.exists()) {
+          throw new Error('Joueur introuvable en base.');
+        }
+        if (voleurSnap.data().pouvoir_utilise) {
+          throw new Error('Pouvoir déjà utilisé.');
+        }
+
+        const vraiRoleCible = targetSnap.data().role;
+        const statutCible = targetSnap.data().statut_joueur;
+        const stolenRoleCheck = rolesData.find(r => r.id === vraiRoleCible);
+        const isLoupFinal = stolenRoleCheck?.name?.toLowerCase().includes('loup') || false;
+        const isInfecte = statutCible === 'infecte';
+
+        // Le Voleur prend le rôle de la cible, reste toujours "en_vie" (jamais infecté)
+        transaction.update(voleurRef, {
+          role: vraiRoleCible,
+          pouvoir_utilise: true,
+          statut_joueur: 'en_vie'
+        });
+
+        // La cible reçoit le rôle "Voleur" et meurt si c'était un Loup OU si elle était Infectée
+        const targetUpdates = { role: 'voleur' };
+        if (isLoupFinal || isInfecte) {
+          targetUpdates.statut_joueur = 'mort';
+        }
+        transaction.update(targetRef, targetUpdates);
       });
-      
-      // Update Target
-      let targetUpdates = {
-        role: 'voleur'
-      };
-      
-      // If target was Loup, target dies
-      if (targetPlayer.role === 'loup-garou' || targetPlayer.role === 'loup-blanc' || targetPlayer.role === 'grand-mechant-loup') {
-        targetUpdates.statut_joueur = 'mort';
-      }
-      
-      batch.update(doc(db, 'salons', roomId, 'joueurs', targetPlayer.id), targetUpdates);
-      
-      await batch.commit();
+
       setShowVoleurModal(false);
-      alert("Vol réussi ! Vous êtes maintenant " + rolesData.find(r => r.id === targetPlayer.role)?.name);
+      const stolenName = stolenRoleData?.name || targetPlayer.role;
+      let msg = `Vol réussi ! Vous êtes maintenant : ${stolenName}`;
+      if (isLoup) msg += '\n⚠️ La cible était un Loup — elle est éliminée.';
+      else if (targetPlayer.statut_joueur === 'infecte') msg += '\n☣️ La cible était Infectée — elle est éliminée. Vous restez sain.';
+      alert(msg);
     } catch (err) {
-      console.error(err);
-      alert("Erreur lors du vol.");
+      console.error('Erreur lors du vol:', err);
+      alert('Erreur lors du vol : ' + (err.message || 'Erreur inconnue'));
     }
   };
 
@@ -296,7 +323,10 @@ export default function PlayerScreen() {
 
   // Phase 2: In Game (statut === "en_cours" or "nuit_0")
   const isDead = me.statut_joueur === "mort";
+  // Cibles valides pour le Voleur : tous les autres joueurs avec un rôle assigné
+  const voleurTargets = joueurs.filter(j => j.id !== me.id && j.role);
   const otherAlivePlayers = joueurs.filter(j => j.id !== me.id && j.statut_joueur !== "mort");
+
 
   return (
     <div className="player-screen">
@@ -337,6 +367,12 @@ export default function PlayerScreen() {
                     Activer le Vol
                  </button>
               )}
+              {me.role === 'voleur' && me.pouvoir_utilise && (
+                 <div style={{padding: '0.75rem', background: 'rgba(100,100,100,0.2)', borderRadius: '8px', textAlign: 'center', marginBottom: '1rem'}}>
+                   <p className="text-font text-muted" style={{fontSize: '0.9rem'}}>🔒 Vol déjà effectué</p>
+                 </div>
+              )}
+
               
               {/* COMEDIEN */}
               {me.role === 'comedien' && salonData.roles_dispo_comedien && salonData.roles_dispo_comedien.length > 0 && (
@@ -372,13 +408,17 @@ export default function PlayerScreen() {
               <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Choisissez un joueur à voler. S'il s'agit d'un loup, il mourra instantanément.</p>
               
               <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                 {otherAlivePlayers.map(p => (
-                    <button key={p.id} onClick={() => handleVoleurAction(p.id)} className="btn-secondary text-font" style={{justifyContent: 'flex-start'}}>
-                       Voler {p.nom}
-                    </button>
-                 ))}
-                 {otherAlivePlayers.length === 0 && <p className="text-font text-muted">Aucun joueur valide.</p>}
+                 {voleurTargets.map(p => {
+                    const pRoleData = rolesData.find(r => r.id === p.role);
+                    return (
+                      <button key={p.id} onClick={() => handleVoleurAction(p.id)} className="btn-secondary text-font" style={{justifyContent: 'flex-start'}}>
+                         Voler {p.nom} {pRoleData ? `(${pRoleData.name})` : ''}
+                      </button>
+                    );
+                 })}
+                 {voleurTargets.length === 0 && <p className="text-font text-muted">Aucun joueur avec un rôle disponible.</p>}
               </div>
+
               <button onClick={() => setShowVoleurModal(false)} className="btn-secondary text-font" style={{marginTop: '1.5rem', width: '100%', justifyContent: 'center'}}>Annuler</button>
            </div>
         </div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { collection, doc, setDoc, updateDoc, onSnapshot, writeBatch } from 'firebase/firestore';
+
 import { db } from './firebase';
 import { rolesData } from './rolesData';
 import { Users, RefreshCw, Eye, Settings, Play, Link as LinkIcon } from 'lucide-react';
@@ -182,15 +183,24 @@ export default function MjDashboard() {
         <div className="mj-content-grid" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '2rem'}}>
            <div className="qr-panel glass-panel">
               <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><LinkIcon size={20} /> Rejoindre le salon</h2>
-              <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Les joueurs doivent scanner ce code ou utiliser le lien pour rejoindre la partie.</p>
-              <div className="qr-wrapper" style={{background: 'white', padding: '15px', borderRadius: '15px', display: 'inline-block'}}>
-                <QRCodeSVG 
-                  value={getPlayerUrl()} 
-                  size={200}
-                  bgColor={"#ffffff"} fgColor={"#000000"} level={"H"} includeMargin={false}
-                />
-              </div>
-              <div className="qr-url text-font" style={{marginTop: '1rem', wordBreak: 'break-all'}}>{getPlayerUrl()}</div>
+              {joueurs.length >= salonData.roles_selectionnes.length ? (
+                <div style={{marginTop: '1rem', padding: '1rem', background: 'rgba(34,197,94,0.1)', border: '1px solid var(--success)', borderRadius: '12px', textAlign: 'center'}}>
+                  <p className="text-font" style={{color: 'var(--success)', fontWeight: 'bold'}}>✅ Tous les joueurs ont rejoint ! ({joueurs.length}/{salonData.roles_selectionnes.length})</p>
+                  <p className="text-font text-muted" style={{fontSize: '0.85rem', marginTop: '0.5rem'}}>Le QR code a été masqué automatiquement.</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Les joueurs doivent scanner ce code ou utiliser le lien pour rejoindre la partie.</p>
+                  <div className="qr-wrapper" style={{background: 'white', padding: '15px', borderRadius: '15px', display: 'inline-block'}}>
+                    <QRCodeSVG 
+                      value={getPlayerUrl()} 
+                      size={200}
+                      bgColor={"#ffffff"} fgColor={"#000000"} level={"H"} includeMargin={false}
+                    />
+                  </div>
+                  <div className="qr-url text-font" style={{marginTop: '1rem', wordBreak: 'break-all'}}>{getPlayerUrl()}</div>
+                </>
+              )}
            </div>
 
            <div className="players-table-panel glass-panel">
@@ -219,7 +229,36 @@ export default function MjDashboard() {
                                       {roleObj ? <span style={{color: roleObj.color, fontWeight: 'bold'}}>{roleObj.name}</span> : <span className="text-muted">Caché</span>}
                                    </td>
                                    <td style={{padding: '10px 5px'}}>
-                                      {j.statut_joueur === 'mort' ? <span className="text-danger">Mort</span> : <span className="text-success">En vie</span>}
+                                     <select
+                                       value={j.statut_joueur || 'en_vie'}
+                                       onChange={async (e) => {
+                                         try {
+                                           await updateDoc(doc(db, 'salons', roomId, 'joueurs', j.id), {
+                                             statut_joueur: e.target.value
+                                           });
+                                         } catch (err) {
+                                           console.error('Erreur mise à jour statut:', err);
+                                         }
+                                       }}
+                                       style={{
+                                         background: 'var(--input-bg)',
+                                         color: j.statut_joueur === 'mort' ? 'var(--danger)'
+                                             : j.statut_joueur === 'infecte' ? '#a855f7'
+                                             : j.statut_joueur === 'en_couple' ? '#ec4899'
+                                             : 'var(--success)',
+                                         border: '1px solid var(--card-border)',
+                                         borderRadius: '6px',
+                                         padding: '4px 8px',
+                                         fontSize: '0.85rem',
+                                         fontWeight: 'bold',
+                                         cursor: 'pointer'
+                                       }}
+                                     >
+                                       <option value="en_vie">En vie</option>
+                                       <option value="mort">Mort</option>
+                                       <option value="infecte">Infecté</option>
+                                       <option value="en_couple">En couple</option>
+                                     </select>
                                    </td>
                                 </tr>
                              );
