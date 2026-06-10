@@ -27,7 +27,7 @@ export default function PlayerScreen() {
   const [showVoleurModal, setShowVoleurModal] = useState(false);
   const [showComedienModal, setShowComedienModal] = useState(false);
   const [showCupidonModal, setShowCupidonModal] = useState(false);
-  const [cupidonSelection, setCupidonSelection] = useState([]);
+  const [selectedPlayers, setSelectedPlayers] = useState([]);
 
   // Subscribe to Salon and Joueurs
   useEffect(() => {
@@ -214,7 +214,7 @@ export default function PlayerScreen() {
   };
 
   const handleCupidonAction = async () => {
-    if (cupidonSelection.length !== 2) {
+    if (selectedPlayers.length !== 2) {
       alert("Veuillez sélectionner exactement deux joueurs.");
       return;
     }
@@ -224,7 +224,7 @@ export default function PlayerScreen() {
         const meRef = doc(db, 'salons', roomId, 'joueurs', me.id);
         
         transaction.update(salonRef, {
-          couple: cupidonSelection
+          couple: selectedPlayers
         });
         transaction.update(meRef, {
           pouvoir_utilise: true
@@ -385,7 +385,7 @@ export default function PlayerScreen() {
   const isDead = me.statut_joueur === "mort";
   // Cibles valides pour le Voleur : tous les autres joueurs avec un rôle assigné et en vie
   const voleurTargets = joueurs.filter(j => j.id !== me.id && j.role && j.statut_joueur !== "mort");
-  const otherAlivePlayers = joueurs.filter(j => j.id !== me.id && j.statut_joueur !== "mort");
+  const allAlivePlayers = joueurs.filter(j => j.statut_joueur !== "mort");
 
 
   return (
@@ -537,28 +537,31 @@ export default function PlayerScreen() {
               <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Choisissez deux joueurs pour former le couple.</p>
               
               <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                 {otherAlivePlayers.map(p => {
-                    const isSelected = cupidonSelection.includes(p.id);
+                 {allAlivePlayers.map(p => {
+                    const isSelected = selectedPlayers.includes(p.id);
                     return (
                        <button 
                          key={p.id} 
                          onClick={() => {
-                           if (isSelected) setCupidonSelection(cupidonSelection.filter(id => id !== p.id));
-                           else if (cupidonSelection.length < 2) setCupidonSelection([...cupidonSelection, p.id]);
+                           if (isSelected) setSelectedPlayers(selectedPlayers.filter(id => id !== p.id));
+                           else if (selectedPlayers.length < 2) setSelectedPlayers([...selectedPlayers, p.id]);
                          }} 
                          className="btn-secondary text-font" 
                          style={{
                            justifyContent: 'flex-start',
                            borderColor: isSelected ? '#ec4899' : 'var(--card-border)',
-                           background: isSelected ? 'rgba(236, 72, 153, 0.2)' : 'transparent'
+                           borderWidth: isSelected ? '2px' : '1px',
+                           fontWeight: isSelected ? 'bold' : 'normal',
+                           background: isSelected ? 'rgba(236, 72, 153, 0.2)' : 'transparent',
+                           color: isSelected ? '#ec4899' : 'var(--text-color)'
                          }}
                        >
-                          {p.nom}
+                          {p.nom} {p.id === me.id ? "(Vous)" : ""}
                        </button>
                     )
                  })}
               </div>
-              <button onClick={handleCupidonAction} className="btn-primary title-font glow-button" style={{marginTop: '1.5rem', width: '100%', justifyContent: 'center', background: '#ec4899', border: 'none'}} disabled={cupidonSelection.length !== 2}>Valider le couple</button>
+              <button onClick={handleCupidonAction} className="btn-primary title-font glow-button" style={{marginTop: '1.5rem', width: '100%', justifyContent: 'center', background: '#ec4899', border: 'none'}} disabled={selectedPlayers.length !== 2}>Valider le couple</button>
               <button onClick={() => setShowCupidonModal(false)} className="btn-secondary text-font" style={{marginTop: '0.5rem', width: '100%', justifyContent: 'center'}}>Annuler</button>
            </div>
         </div>
