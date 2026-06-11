@@ -181,28 +181,21 @@ export default function MjDashboard() {
           </div>
         </header>
 
-        <div className="mj-content-grid" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '2rem'}}>
-           <div className="qr-panel glass-panel">
-              <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><LinkIcon size={20} /> Rejoindre le salon</h2>
-              {joueurs.length >= salonData.roles_selectionnes.length ? (
-                <div style={{marginTop: '1rem', padding: '1rem', background: 'rgba(34,197,94,0.1)', border: '1px solid var(--success)', borderRadius: '12px', textAlign: 'center'}}>
-                  <p className="text-font" style={{color: 'var(--success)', fontWeight: 'bold'}}>✅ Tous les joueurs ont rejoint ! ({joueurs.length}/{salonData.roles_selectionnes.length})</p>
-                  <p className="text-font text-muted" style={{fontSize: '0.85rem', marginTop: '0.5rem'}}>Le QR code a été masqué automatiquement.</p>
-                </div>
-              ) : (
-                <>
-                  <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Les joueurs doivent scanner ce code ou utiliser le lien pour rejoindre la partie.</p>
-                  <div className="qr-wrapper" style={{background: 'white', padding: '15px', borderRadius: '15px', display: 'inline-block'}}>
-                    <QRCodeSVG 
-                      value={getPlayerUrl()} 
-                      size={200}
-                      bgColor={"#ffffff"} fgColor={"#000000"} level={"H"} includeMargin={false}
-                    />
-                  </div>
-                  <div className="qr-url text-font" style={{marginTop: '1rem', wordBreak: 'break-all'}}>{getPlayerUrl()}</div>
-                </>
-              )}
-           </div>
+        <div className="mj-content-grid" style={{display: 'grid', gridTemplateColumns: joueurs.length >= salonData.roles_selectionnes.length ? '1fr' : '1fr 1fr', gap: '2rem', marginTop: '2rem'}}>
+           {joueurs.length < salonData.roles_selectionnes.length && (
+             <div className="qr-panel glass-panel">
+               <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><LinkIcon size={20} /> Rejoindre le salon</h2>
+               <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Les joueurs doivent scanner ce code ou utiliser le lien pour rejoindre la partie.</p>
+               <div className="qr-wrapper" style={{background: 'white', padding: '15px', borderRadius: '15px', display: 'inline-block'}}>
+                 <QRCodeSVG 
+                   value={getPlayerUrl()} 
+                   size={200}
+                   bgColor={"#ffffff"} fgColor={"#000000"} level={"H"} includeMargin={false}
+                 />
+               </div>
+               <div className="qr-url text-font" style={{marginTop: '1rem', wordBreak: 'break-all'}}>{getPlayerUrl()}</div>
+             </div>
+           )}
 
            <div className="players-table-panel glass-panel">
               <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><Users size={20} /> Joueurs connectés ({joueurs.length})</h2>

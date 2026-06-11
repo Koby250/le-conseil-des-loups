@@ -71,7 +71,7 @@ export default function PlayerScreen() {
   useEffect(() => {
     if (!salonData?.couple || salonData.couple.length !== 2 || !me) return;
     
-    // Check if I am in the couple and I am alive, but my partner is dead
+    // Mort en chaîne : si mon partenaire est mort, je meurs aussi
     const amInCouple = salonData.couple.includes(me.id);
     if (amInCouple && me.statut_joueur !== 'mort') {
       const partnerId = salonData.couple.find(id => id !== me.id);
@@ -83,32 +83,45 @@ export default function PlayerScreen() {
       }
     }
 
-    // Check if both are dead, and if I am Cupid, check if I should die
+    // Règle de Cupidon : si les 2 amants sont morts et aucun loup, Cupidon meurt
     if (me.role === 'cupidon' && me.statut_joueur !== 'mort') {
       const p1 = joueurs.find(j => j.id === salonData.couple[0]);
       const p2 = joueurs.find(j => j.id === salonData.couple[1]);
       
       if (p1?.statut_joueur === 'mort' && p2?.statut_joueur === 'mort') {
-        const p1Loup = p1.role?.toLowerCase().includes('loup') || p1.statut_joueur === 'infecte';
-        const p2Loup = p2.role?.toLowerCase().includes('loup') || p2.statut_joueur === 'infecte';
+        const isLoup = (j) => j?.role?.toLowerCase().includes('loup') || j?.statut_joueur === 'infecte';
         
-        if (!p1Loup && !p2Loup) {
+        if (!isLoup(p1) && !isLoup(p2)) {
           updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
             statut_joueur: 'mort'
           }).catch(console.error);
         }
       }
     }
-  }, [joueurs, salonData?.couple, me, roomId]);
+  }, [joueurs, salonData?.couple, me?.statut_joueur, me?.id, me?.role, roomId]);
 
   const handleJoin = async (e) => {
     e.preventDefault();
     if (!playerName.trim()) return;
+
+    // Guard: room full
+    if (salonData && joueurs.length >= salonData.roles_selectionnes.length) {
+      setError("Le salon est complet. Vous ne pouvez pas rejoindre cette partie.");
+      return;
+    }
     
-    const newPlayerId = "joueur_" + Math.random().toString(36).substring(2, 9);
+    // ID stable basé sur le pseudo + roomId pour éviter les doublons sur double-clic
+    const stableId = "joueur_" + roomId + "_" + playerName.trim().toLowerCase().replace(/\s+/g, '_');
+    
+    // Vérifier si le pseudo est déjà pris (autre joueur)
+    const existingByName = joueurs.find(j => j.nom.toLowerCase() === playerName.trim().toLowerCase() && j.id !== stableId);
+    if (existingByName) {
+      alert("Ce pseudo est déjà utilisé dans ce salon !");
+      return;
+    }
     
     try {
-      await setDoc(doc(db, 'salons', roomId, 'joueurs', newPlayerId), {
+      await setDoc(doc(db, 'salons', roomId, 'joueurs', stableId), {
         nom: playerName.trim(),
         carte_choisie: null,
         role: "",
@@ -117,8 +130,8 @@ export default function PlayerScreen() {
         pouvoir_utilise: false
       });
       
-      localStorage.setItem(`loup_garou_${roomId}_playerId`, newPlayerId);
-      setPlayerId(newPlayerId);
+      localStorage.setItem(`loup_garou_${roomId}_playerId`, stableId);
+      setPlayerId(stableId);
       setIsJoined(true);
     } catch (err) {
       console.error(err);
@@ -222,13 +235,13 @@ export default function PlayerScreen() {
       await runTransaction(db, async (transaction) => {
         const salonRef = doc(db, 'salons', roomId);
         const meRef = doc(db, 'salons', roomId, 'joueurs', me.id);
+        const p1Ref = doc(db, 'salons', roomId, 'joueurs', selectedPlayers[0]);
+        const p2Ref = doc(db, 'salons', roomId, 'joueurs', selectedPlayers[1]);
         
-        transaction.update(salonRef, {
-          couple: selectedPlayers
-        });
-        transaction.update(meRef, {
-          pouvoir_utilise: true
-        });
+        transaction.update(salonRef, { couple: selectedPlayers });
+        transaction.update(meRef, { pouvoir_utilise: true });
+        transaction.update(p1Ref, { statut_joueur: 'En couple' });
+        transaction.update(p2Ref, { statut_joueur: 'En couple' });
       });
       setShowCupidonModal(false);
       alert("Le couple a été formé avec succès !");
