@@ -26,7 +26,7 @@ export default function PlayerScreen() {
   // UI states for powers
   const [showVoleurModal, setShowVoleurModal] = useState(false);
   const [showComedienModal, setShowComedienModal] = useState(false);
-  const [showCupidonModal, setShowCupidonModal] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
 
   // Subscribe to Salon and Joueurs
@@ -473,18 +473,75 @@ export default function PlayerScreen() {
                  </button>
               )}
 
-              {/* CUPIDON */}
-              {me.role === 'cupidon' && !me.pouvoir_utilise && salonData.statut === 'nuit_0' && (
+              {/* CUPIDON - Bouton d'activation */}
+              {me.role === 'cupidon' && !me.pouvoir_utilise && !isSelecting && (
                  <button 
-                   onClick={() => setShowCupidonModal(true)} 
+                   onClick={() => { setIsSelecting(true); setSelectedPlayers([]); }} 
                    className="btn-primary title-font glow-button" 
                    style={{width: '100%', marginBottom: '1rem', background: '#ec4899', border: 'none'}}
                  >
-                    Former le Couple
+                    ✨ Activer le pouvoir de Cupidon
                  </button>
               )}
            </div>
         )}
+
+        {/* CUPIDON - Interface de sélection inline */}
+        {me.role === 'cupidon' && !me.pouvoir_utilise && isSelecting && (
+           <div style={{marginTop: '1.5rem', padding: '1rem', background: 'rgba(236,72,153,0.1)', border: '1px solid #ec4899', borderRadius: '12px'}}>
+             <h3 className="title-font" style={{color: '#ec4899', marginBottom: '0.5rem'}}>Cupidon — Choisissez 2 joueurs</h3>
+             <p className="text-font text-muted" style={{fontSize: '0.85rem', marginBottom: '1rem'}}>Vous pouvez vous inclure dans le couple. ({selectedPlayers.length}/2 sélectionnés)</p>
+             <ul style={{listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
+               {allAlivePlayers.map(j => {
+                 const isSel = selectedPlayers.includes(j.id);
+                 return (
+                   <li key={j.id}
+                     onClick={() => {
+                       if (isSel) {
+                         setSelectedPlayers(selectedPlayers.filter(id => id !== j.id));
+                       } else if (selectedPlayers.length < 2) {
+                         setSelectedPlayers([...selectedPlayers, j.id]);
+                       }
+                     }}
+                     style={{
+                       padding: '12px 14px',
+                       borderRadius: '8px',
+                       cursor: 'pointer',
+                       display: 'flex',
+                       alignItems: 'center',
+                       gap: '10px',
+                       transition: 'all 0.2s',
+                       backgroundColor: isSel ? '#ec4899' : 'rgba(255,255,255,0.05)',
+                       fontWeight: isSel ? 'bold' : 'normal',
+                       color: isSel ? '#fff' : 'var(--text-color)',
+                       border: isSel ? '2px solid #be185d' : '2px solid transparent'
+                     }}
+                   >
+                     <span style={{fontSize: '1.2rem'}}>{isSel ? '♥️' : '○'}</span>
+                     <span>{j.nom} {j.id === me.id ? <em style={{opacity: 0.8}}>(Vous)</em> : ''}</span>
+                   </li>
+                 );
+               })}
+             </ul>
+             <div style={{display: 'flex', gap: '10px', marginTop: '1.2rem'}}>
+               <button
+                 onClick={handleCupidonAction}
+                 disabled={selectedPlayers.length !== 2}
+                 className="btn-primary title-font glow-button"
+                 style={{flex: 1, background: selectedPlayers.length === 2 ? '#ec4899' : 'rgba(100,100,100,0.3)', border: 'none', opacity: selectedPlayers.length === 2 ? 1 : 0.5, cursor: selectedPlayers.length === 2 ? 'pointer' : 'not-allowed'}}
+               >
+                 💖 Valider le couple
+               </button>
+               <button
+                 onClick={() => { setIsSelecting(false); setSelectedPlayers([]); }}
+                 className="btn-secondary text-font"
+                 style={{padding: '0 1rem'}}
+               >
+                 Annuler
+               </button>
+             </div>
+           </div>
+         )}
 
         <div className="players-list-panel glass-panel" style={{marginTop: '2rem'}}>
            <h3 className="title-font" style={{marginBottom: '1rem', borderBottom: '1px solid var(--card-border)', paddingBottom: '0.5rem'}}>Joueurs en vie</h3>
@@ -543,42 +600,8 @@ export default function PlayerScreen() {
         </div>
       )}
 
-      {showCupidonModal && (
-        <div className="modal-overlay">
-           <div className="modal-content glass-panel border-accent" style={{borderColor: '#ec4899'}}>
-              <h3 className="title-font" style={{marginBottom: '1rem', color: '#ec4899'}}>Action de Cupidon</h3>
-              <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Choisissez deux joueurs pour former le couple.</p>
-              
-              <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                 {allAlivePlayers.map(p => {
-                    const isSelected = selectedPlayers.includes(p.id);
-                    return (
-                       <button 
-                         key={p.id} 
-                         onClick={() => {
-                           if (isSelected) setSelectedPlayers(selectedPlayers.filter(id => id !== p.id));
-                           else if (selectedPlayers.length < 2) setSelectedPlayers([...selectedPlayers, p.id]);
-                         }} 
-                         className="btn-secondary text-font" 
-                         style={{
-                           justifyContent: 'flex-start',
-                           borderColor: isSelected ? '#ec4899' : 'var(--card-border)',
-                           borderWidth: isSelected ? '2px' : '1px',
-                           fontWeight: isSelected ? 'bold' : 'normal',
-                           background: isSelected ? 'rgba(236, 72, 153, 0.2)' : 'transparent',
-                           color: isSelected ? '#ec4899' : 'var(--text-color)'
-                         }}
-                       >
-                          {p.nom} {p.id === me.id ? "(Vous)" : ""}
-                       </button>
-                    )
-                 })}
-              </div>
-              <button onClick={handleCupidonAction} className="btn-primary title-font glow-button" style={{marginTop: '1.5rem', width: '100%', justifyContent: 'center', background: '#ec4899', border: 'none'}} disabled={selectedPlayers.length !== 2}>Valider le couple</button>
-              <button onClick={() => setShowCupidonModal(false)} className="btn-secondary text-font" style={{marginTop: '0.5rem', width: '100%', justifyContent: 'center'}}>Annuler</button>
-           </div>
-        </div>
-      )}
+
+
     </div>
   );
 }
