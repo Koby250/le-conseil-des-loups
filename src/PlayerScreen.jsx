@@ -232,24 +232,35 @@ export default function PlayerScreen() {
       return;
     }
     try {
+      const p1Id = selectedPlayers[0];
+      const p2Id = selectedPlayers[1];
+      const meId = me.id;
+
       await runTransaction(db, async (transaction) => {
         const salonRef = doc(db, 'salons', roomId);
-        const meRef = doc(db, 'salons', roomId, 'joueurs', me.id);
-        const p1Ref = doc(db, 'salons', roomId, 'joueurs', selectedPlayers[0]);
-        const p2Ref = doc(db, 'salons', roomId, 'joueurs', selectedPlayers[1]);
-        
-        transaction.update(salonRef, { couple: selectedPlayers });
-        transaction.update(meRef, { pouvoir_utilise: true });
-        transaction.update(p1Ref, { statut_joueur: 'En couple' });
-        transaction.update(p2Ref, { statut_joueur: 'En couple' });
+        // Construire un map unique : docId -> champs à fusionner
+        const updates = {};
+        updates[meId] = { pouvoir_utilise: true };
+        // Fusionner statut_joueur sur p1
+        updates[p1Id] = { ...(updates[p1Id] || {}), statut_joueur: 'En couple' };
+        // Fusionner statut_joueur sur p2
+        updates[p2Id] = { ...(updates[p2Id] || {}), statut_joueur: 'En couple' };
+
+        transaction.update(salonRef, { couple: [p1Id, p2Id] });
+        // Écrire chaque doc unique une seule fois
+        for (const [id, fields] of Object.entries(updates)) {
+          transaction.update(doc(db, 'salons', roomId, 'joueurs', id), fields);
+        }
       });
-      setShowCupidonModal(false);
-      alert("Le couple a été formé avec succès !");
+      setIsSelecting(false);
+      setSelectedPlayers([]);
+      alert("💖 Le couple a été formé avec succès !");
     } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la formation du couple.");
+      console.error('Cupidon error:', err);
+      alert('Erreur lors de la formation du couple : ' + (err.message || 'Erreur inconnue'));
     }
   };
+
 
   const handleComedienAction = async (roleId) => {
     if (!me || me.role !== 'comedien') return;
