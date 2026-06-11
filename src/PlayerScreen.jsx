@@ -70,27 +70,29 @@ export default function PlayerScreen() {
 
   useEffect(() => {
     if (!salonData?.couple || salonData.couple.length !== 2 || !me) return;
-    
-    // Mort en chaîne : si mon partenaire est mort, je meurs aussi
-    const amInCouple = salonData.couple.includes(me.id);
-    if (amInCouple && me.statut_joueur !== 'mort') {
+
+    const aliveStatuses = ['en_vie', 'En couple'];
+
+    // RèGLE DU COUPLE : mort en chaîne
+    if (salonData.couple.includes(me.id) && aliveStatuses.includes(me.statut_joueur)) {
       const partnerId = salonData.couple.find(id => id !== me.id);
       const partner = joueurs.find(j => j.id === partnerId);
       if (partner && partner.statut_joueur === 'mort') {
+        // Anti-boucle : on écrit seulement si on n'est pas déjà mort
         updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
           statut_joueur: 'mort'
         }).catch(console.error);
+        return; // stoppe ici, pas besoin d'évaluer la règle Cupidon sur cette passe
       }
     }
 
-    // Règle de Cupidon : si les 2 amants sont morts et aucun loup, Cupidon meurt
-    if (me.role === 'cupidon' && me.statut_joueur !== 'mort') {
+    // RÈGLE DE CUPIDON : meurt si les 2 amants (non-loups) sont morts
+    if (me.role === 'cupidon' && me.pouvoir_utilise && me.statut_joueur !== 'mort') {
       const p1 = joueurs.find(j => j.id === salonData.couple[0]);
       const p2 = joueurs.find(j => j.id === salonData.couple[1]);
-      
       if (p1?.statut_joueur === 'mort' && p2?.statut_joueur === 'mort') {
+        // On utilise le ROLE stocké (pas le statut courant) pour détecter les loups
         const isLoup = (j) => j?.role?.toLowerCase().includes('loup') || j?.statut_joueur === 'infecte';
-        
         if (!isLoup(p1) && !isLoup(p2)) {
           updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
             statut_joueur: 'mort'
@@ -98,7 +100,7 @@ export default function PlayerScreen() {
         }
       }
     }
-  }, [joueurs, salonData?.couple, me?.statut_joueur, me?.id, me?.role, roomId]);
+  }, [joueurs, salonData?.couple, me?.statut_joueur, me?.id, me?.role, me?.pouvoir_utilise, roomId]);
 
   const handleJoin = async (e) => {
     e.preventDefault();
@@ -438,20 +440,27 @@ export default function PlayerScreen() {
            )}
         </div>
 
-        {/* INFO COUPLE */}
-        {salonData?.couple?.includes(me.id) && (
-           <div style={{marginTop: '1rem', padding: '10px', background: 'rgba(236, 72, 153, 0.2)', border: '1px solid #ec4899', borderRadius: '8px', color: '#ec4899'}}>
-              {(() => {
-                const partnerId = salonData.couple.find(id => id !== me.id);
-                const partner = joueurs.find(j => j.id === partnerId);
-                if (partner) {
-                  const pRole = rolesData.find(r => r.id === partner.role)?.name || partner.role;
-                  return <strong>❤️ Vous êtes en couple avec {partner.nom} ({pRole})</strong>;
-                }
-                return null;
-              })()}
-           </div>
-        )}
+        {/* INFO COUPLE : affichage du partenaire avec son rôle */}
+        {salonData?.couple?.includes(me.id) && (() => {
+          const partnerId = salonData.couple.find(id => id !== me.id);
+          const partner = joueurs.find(j => j.id === partnerId);
+          if (!partner) return null;
+          const pRoleData = rolesData.find(r => r.id === partner.role);
+          const pRoleName = pRoleData?.name || (partner.role || 'Rôle inconnu');
+          const pColor = pRoleData?.color || '#ec4899';
+          return (
+            <div style={{marginTop: '1rem', padding: '12px 14px', background: 'rgba(236,72,153,0.15)', border: '2px solid #ec4899', borderRadius: '10px'}}>
+              <p className="text-font" style={{margin: 0, color: '#ec4899', fontWeight: 'bold', fontSize: '1rem'}}>
+                💖 Vous êtes en couple avec <span style={{color: '#fff'}}>{partner.nom}</span>
+              </p>
+              <p className="text-font" style={{margin: '4px 0 0', fontSize: '0.9rem'}}>
+                Rôle de votre partenaire : 
+                <strong style={{color: pColor}}>{pRoleName}</strong>
+                {partner.statut_joueur === 'mort' && <span style={{color: 'var(--danger)', marginLeft: '8px'}}>— ☠️ Décédé(e)</span>}
+              </p>
+            </div>
+          );
+        })()}
 
         {/* Powers Section */}
         {!isDead && (

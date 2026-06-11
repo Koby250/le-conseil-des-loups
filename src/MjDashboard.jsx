@@ -213,50 +213,54 @@ export default function MjDashboard() {
                           </tr>
                        </thead>
                        <tbody>
-                          {joueurs.map(j => {
-                             const roleObj = j.role ? rolesData.find(r => r.id === j.role) : null;
-                             return (
-                                <tr key={j.id} style={{borderBottom: '1px solid var(--card-border)', opacity: j.statut_joueur === 'mort' ? 0.5 : 1}}>
-                                   <td style={{padding: '10px 5px', fontWeight: 'bold'}}>{j.nom}</td>
-                                   <td style={{padding: '10px 5px'}}>{j.carte_choisie !== null ? j.carte_choisie + 1 : '-'}</td>
-                                   <td style={{padding: '10px 5px'}}>
-                                      {roleObj ? <span style={{color: roleObj.color, fontWeight: 'bold'}}>{roleObj.name}</span> : <span className="text-muted">Caché</span>}
-                                   </td>
-                                   <td style={{padding: '10px 5px'}}>
-                                     <select
-                                       value={j.statut_joueur || 'en_vie'}
-                                       onChange={async (e) => {
-                                         try {
-                                           await updateDoc(doc(db, 'salons', roomId, 'joueurs', j.id), {
-                                             statut_joueur: e.target.value
-                                           });
-                                         } catch (err) {
-                                           console.error('Erreur mise à jour statut:', err);
-                                         }
-                                       }}
-                                       style={{
-                                         background: 'var(--input-bg)',
-                                         color: j.statut_joueur === 'mort' ? 'var(--danger)'
-                                             : j.statut_joueur === 'infecte' ? '#a855f7'
-                                             : j.statut_joueur === 'en_couple' ? '#ec4899'
-                                             : 'var(--success)',
-                                         border: '1px solid var(--card-border)',
-                                         borderRadius: '6px',
-                                         padding: '4px 8px',
-                                         fontSize: '0.85rem',
-                                         fontWeight: 'bold',
-                                         cursor: 'pointer'
-                                       }}
-                                     >
-                                       <option value="en_vie">En vie</option>
-                                       <option value="mort">Mort</option>
-                                       <option value="infecte">Infecté</option>
-                                       <option value="en_couple">En couple</option>
-                                     </select>
-                                   </td>
-                                </tr>
-                             );
-                          })}
+                           {joueurs.map(j => {
+                              const roleObj = j.role ? rolesData.find(r => r.id === j.role) : null;
+                              const enCouple = j.statut_joueur === 'En couple';
+                              return (
+                                 <tr key={j.id} style={{borderBottom: '1px solid var(--card-border)', opacity: j.statut_joueur === 'mort' ? 0.5 : 1, background: enCouple ? 'rgba(236,72,153,0.1)' : 'transparent'}}>
+                                    <td style={{padding: '10px 5px', fontWeight: 'bold'}}>
+                                      {j.nom}
+                                      {enCouple && <span style={{marginLeft: '6px', fontSize: '0.75rem', background: '#ec4899', color: '#fff', borderRadius: '999px', padding: '2px 8px', fontWeight: 'bold'}}>💖 Couple</span>}
+                                    </td>
+                                    <td style={{padding: '10px 5px'}}>{j.carte_choisie !== null ? j.carte_choisie + 1 : '-'}</td>
+                                    <td style={{padding: '10px 5px'}}>
+                                       {roleObj ? <span style={{color: roleObj.color, fontWeight: 'bold'}}>{roleObj.name}</span> : <span className="text-muted">Caché</span>}
+                                    </td>
+                                    <td style={{padding: '10px 5px'}}>
+                                      <select
+                                        value={j.statut_joueur || 'en_vie'}
+                                        onChange={async (e) => {
+                                          try {
+                                            await updateDoc(doc(db, 'salons', roomId, 'joueurs', j.id), {
+                                              statut_joueur: e.target.value
+                                            });
+                                          } catch (err) {
+                                            console.error('Erreur mise à jour statut:', err);
+                                          }
+                                        }}
+                                        style={{
+                                          background: 'var(--input-bg)',
+                                          color: j.statut_joueur === 'mort' ? 'var(--danger)'
+                                              : j.statut_joueur === 'infecte' ? '#a855f7'
+                                              : enCouple ? '#ec4899'
+                                              : 'var(--success)',
+                                          border: enCouple ? '1px solid #ec4899' : '1px solid var(--card-border)',
+                                          borderRadius: '6px',
+                                          padding: '4px 8px',
+                                          fontSize: '0.85rem',
+                                          fontWeight: 'bold',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        <option value="en_vie">En vie</option>
+                                        <option value="mort">Mort</option>
+                                        <option value="infecte">Infecté</option>
+                                        <option value="En couple">En couple</option>
+                                      </select>
+                                    </td>
+                                 </tr>
+                              );
+                           })}
                        </tbody>
                     </table>
                  </div>
