@@ -10,7 +10,6 @@ import ThemeToggle from './ThemeToggle';
 export default function PlayerScreen() {
   const { roomId } = useParams();
   
-  // State
   const [playerName, setPlayerName] = useState("");
   const [playerId, setPlayerId] = useState(localStorage.getItem(`loup_garou_${roomId}_playerId`) || null);
   const [isJoined, setIsJoined] = useState(!!playerId);
@@ -23,22 +22,29 @@ export default function PlayerScreen() {
   const [error, setError] = useState(null);
   const [showRole, setShowRole] = useState(false);
   
-  // UI states for powers
+  // Modals & States for Powers
   const [showVoleurModal, setShowVoleurModal] = useState(false);
   const [showComedienModal, setShowComedienModal] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
-  const [selectedPlayers, setSelectedPlayers] = useState([]);
+  const [selectedPlayers, setSelectedPlayers] = useState([]); // Cupidon
+  
+  // Voyante state
+  const [voyanteCible, setVoyanteCible] = useState(null);
+  
+  // Salvateur state
+  const [salvateurCible, setSalvateurCible] = useState(null);
+
+  // Nuit Sorcière state
+  const [potionVieActive, setPotionVieActive] = useState(false);
+  const [showPotionMortSelection, setShowPotionMortSelection] = useState(false);
+  const [cibleMortLocal, setCibleMortLocal] = useState(null);
 
   // Subscribe to Salon and Joueurs
   useEffect(() => {
     if (!roomId) return;
-    
     const unsubSalon = onSnapshot(doc(db, 'salons', roomId), (docSnap) => {
-      if (docSnap.exists()) {
-        setSalonData({ id: docSnap.id, ...docSnap.data() });
-      } else {
-        setError("Ce salon n'existe pas ou a été fermé.");
-      }
+      if (docSnap.exists()) setSalonData({ id: docSnap.id, ...docSnap.data() });
+      else setError("Ce salon n'existe pas ou a été fermé.");
       setLoading(false);
     });
 
@@ -48,56 +54,37 @@ export default function PlayerScreen() {
       setJoueurs(jList);
     });
 
-    return () => {
-      unsubSalon();
-      unsubJoueurs();
-    };
+    return () => { unsubSalon(); unsubJoueurs(); };
   }, [roomId]);
 
-  // Sync "me" object
+  // Sync "me"
   useEffect(() => {
     if (playerId && joueurs.length > 0) {
       const myData = joueurs.find(j => j.id === playerId);
       if (myData) {
          setMe(myData);
-         // If a reset happens, carte_choisie is null, we can reset showRole
-         if (myData.carte_choisie === null) {
-            setShowRole(false);
-         }
+         if (myData.carte_choisie === null) setShowRole(false);
       }
     }
   }, [playerId, joueurs]);
 
   useEffect(() => {
     if (!salonData?.couple || salonData.couple.length !== 2 || !me) return;
-
     const aliveStatuses = ['en_vie', 'En couple'];
-
-    // RèGLE DU COUPLE : mort en chaîne
     if (salonData.couple.includes(me.id) && aliveStatuses.includes(me.statut_joueur)) {
       const partnerId = salonData.couple.find(id => id !== me.id);
       const partner = joueurs.find(j => j.id === partnerId);
       if (partner && partner.statut_joueur === 'mort') {
-        // Anti-boucle : on écrit seulement si on n'est pas déjà mort
-        updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
-          statut_joueur: 'mort'
-        }).catch(console.error);
-        return; // stoppe ici, pas besoin d'évaluer la règle Cupidon sur cette passe
+        updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { statut_joueur: 'mort' }).catch(console.error);
+        return;
       }
     }
-
-    // RÈGLE DE CUPIDON : meurt si les 2 amants (non-loups) sont morts
     if (me.role === 'cupidon' && me.pouvoir_utilise && me.statut_joueur !== 'mort') {
       const p1 = joueurs.find(j => j.id === salonData.couple[0]);
       const p2 = joueurs.find(j => j.id === salonData.couple[1]);
       if (p1?.statut_joueur === 'mort' && p2?.statut_joueur === 'mort') {
-        // On utilise le ROLE stocké (pas le statut courant) pour détecter les loups
         const isLoup = (j) => j?.role?.toLowerCase().includes('loup') || j?.statut_joueur === 'infecte';
-        if (!isLoup(p1) && !isLoup(p2)) {
-          updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
-            statut_joueur: 'mort'
-          }).catch(console.error);
-        }
+        if (!isLoup(p1) && !isLoup(p2)) updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { statut_joueur: 'mort' }).catch(console.error);
       }
     }
   }, [joueurs, salonData?.couple, me?.statut_joueur, me?.id, me?.role, me?.pouvoir_utilise, roomId]);
@@ -105,22 +92,10 @@ export default function PlayerScreen() {
   const handleJoin = async (e) => {
     e.preventDefault();
     if (!playerName.trim()) return;
-
-    // Guard: room full
-    if (salonData && joueurs.length >= salonData.roles_selectionnes.length) {
-      setError("Le salon est complet. Vous ne pouvez pas rejoindre cette partie.");
-      return;
-    }
+    if (salonData && joueurs.length >= salonData.roles_selectionnes.length) return setError("Salon complet.");
     
-    // ID stable basé sur le pseudo + roomId pour éviter les doublons sur double-clic
     const stableId = "joueur_" + roomId + "_" + playerName.trim().toLowerCase().replace(/\s+/g, '_');
-    
-    // Vérifier si le pseudo est déjà pris (autre joueur)
-    const existingByName = joueurs.find(j => j.nom.toLowerCase() === playerName.trim().toLowerCase() && j.id !== stableId);
-    if (existingByName) {
-      alert("Ce pseudo est déjà utilisé dans ce salon !");
-      return;
-    }
+    if (joueurs.find(j => j.nom.toLowerCase() === playerName.trim().toLowerCase() && j.id !== stableId)) return alert("Pseudo déjà pris !");
     
     try {
       await setDoc(doc(db, 'salons', roomId, 'joueurs', stableId), {
@@ -129,178 +104,88 @@ export default function PlayerScreen() {
         role: "",
         statut_joueur: "en_vie",
         est_mj: false,
-        pouvoir_utilise: false
+        pouvoir_utilise: false,
+        a_vote: false,
+        a_vote_sorciere: false,
+        vote_jour: null,
+        illusion_dispo: true,
+        dernier_protege: null,
+        potion_vie_utilisee: false,
+        potion_mort_utilisee: false
       });
-      
       localStorage.setItem(`loup_garou_${roomId}_playerId`, stableId);
       setPlayerId(stableId);
       setIsJoined(true);
-    } catch (err) {
-      console.error(err);
-      setError("Erreur lors de la connexion au salon.");
-    }
+    } catch (err) { setError("Erreur de connexion."); }
   };
 
   const handlePickCard = async (index) => {
     if (!salonData || !me) return;
-    
-    // Check if card already taken
-    const isTaken = joueurs.some(j => j.carte_choisie === index);
-    if (isTaken) {
-      alert("Cette carte a déjà été choisie !");
-      return;
-    }
-
+    if (joueurs.some(j => j.carte_choisie === index)) return alert("Carte déjà prise !");
     const assignedRole = salonData.roles_melanges[index];
-    
-    try {
-      await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
-        carte_choisie: index,
-        role: assignedRole
-      });
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors du choix de la carte.");
-    }
+    try { await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { carte_choisie: index, role: assignedRole }); } 
+    catch (err) { alert("Erreur."); }
   };
 
   const handleVoleurAction = async (targetPlayerId) => {
     if (!me || me.role !== 'voleur' || me.pouvoir_utilise) return;
-
-    const targetPlayer = joueurs.find(j => j.id === targetPlayerId);
-    if (!targetPlayer || !targetPlayer.role) {
-      alert("Ce joueur n'a pas encore de rôle assigné.");
-      return;
+    
+    if (targetPlayerId === 'passer') {
+       try {
+         await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { pouvoir_utilise: true, a_vote: true });
+         setShowVoleurModal(false);
+         alert("Vous avez décidé de ne pas voler de carte.");
+       } catch(e) { console.error(e); }
+       return;
     }
 
-    if (!window.confirm(`Êtes-vous sûr de vouloir voler le rôle de ${targetPlayer.nom} ?`)) return;
+    const targetPlayer = joueurs.find(j => j.id === targetPlayerId);
+    if (!targetPlayer || !targetPlayer.role) return alert("Ce joueur n'a pas encore de rôle.");
+    if (!window.confirm(`Voler le rôle de ${targetPlayer.nom} ?`)) return;
 
     try {
       const stolenRoleData = rolesData.find(r => r.id === targetPlayer.role);
-      // Vérification : le nom du rôle contient-il "loup" (insensible à la casse) ?
       const isLoup = stolenRoleData?.name?.toLowerCase().includes('loup') || false;
 
       await runTransaction(db, async (transaction) => {
-        // Lecture fraîche du voleur et de la cible
         const voleurRef = doc(db, 'salons', roomId, 'joueurs', me.id);
         const targetRef = doc(db, 'salons', roomId, 'joueurs', targetPlayerId);
-
-        const voleurSnap = await transaction.get(voleurRef);
         const targetSnap = await transaction.get(targetRef);
-
-        if (!voleurSnap.exists() || !targetSnap.exists()) {
-          throw new Error('Joueur introuvable en base.');
-        }
-        if (voleurSnap.data().pouvoir_utilise) {
-          throw new Error('Pouvoir déjà utilisé.');
-        }
 
         const vraiRoleCible = targetSnap.data().role;
         const statutCible = targetSnap.data().statut_joueur;
         const stolenRoleCheck = rolesData.find(r => r.id === vraiRoleCible);
         const isLoupFinal = stolenRoleCheck?.name?.toLowerCase().includes('loup') || false;
-        const isInfecte = statutCible === 'infecte';
+        
+        transaction.update(voleurRef, { role: vraiRoleCible, pouvoir_utilise: true, a_vote: true, statut_joueur: 'en_vie' });
 
-        // Le Voleur prend le rôle de la cible, reste toujours "en_vie" (jamais infecté)
-        transaction.update(voleurRef, {
-          role: vraiRoleCible,
-          pouvoir_utilise: true,
-          statut_joueur: 'en_vie'
-        });
-
-        // La cible reçoit le rôle "Voleur" et meurt si c'était un Loup OU si elle était Infectée
         const targetUpdates = { role: 'voleur' };
-        if (isLoupFinal || isInfecte) {
-          targetUpdates.statut_joueur = 'mort';
-        }
+        if (isLoupFinal || statutCible === 'infecte') targetUpdates.statut_joueur = 'mort';
         transaction.update(targetRef, targetUpdates);
       });
 
       setShowVoleurModal(false);
-      const stolenName = stolenRoleData?.name || targetPlayer.role;
-      let msg = `Vol réussi ! Vous êtes maintenant : ${stolenName}`;
+      let msg = `Vol réussi ! Vous êtes : ${stolenRoleData?.name || targetPlayer.role}`;
       if (isLoup) msg += '\n⚠️ La cible était un Loup — elle est éliminée.';
-      else if (targetPlayer.statut_joueur === 'infecte') msg += '\n☣️ La cible était Infectée — elle est éliminée. Vous restez sain.';
       alert(msg);
-    } catch (err) {
-      console.error('Erreur lors du vol:', err);
-      alert('Erreur lors du vol : ' + (err.message || 'Erreur inconnue'));
-    }
+    } catch (err) { alert('Erreur vol : ' + err.message); }
   };
-
-  const handleCupidonAction = async () => {
-    if (selectedPlayers.length !== 2) {
-      alert("Veuillez sélectionner exactement deux joueurs.");
-      return;
-    }
-    try {
-      const p1Id = selectedPlayers[0];
-      const p2Id = selectedPlayers[1];
-      const meId = me.id;
-
-      await runTransaction(db, async (transaction) => {
-        const salonRef = doc(db, 'salons', roomId);
-        // Construire un map unique : docId -> champs à fusionner
-        const updates = {};
-        updates[meId] = { pouvoir_utilise: true };
-        // Fusionner statut_joueur sur p1
-        updates[p1Id] = { ...(updates[p1Id] || {}), statut_joueur: 'En couple' };
-        // Fusionner statut_joueur sur p2
-        updates[p2Id] = { ...(updates[p2Id] || {}), statut_joueur: 'En couple' };
-
-        transaction.update(salonRef, { couple: [p1Id, p2Id] });
-        // Écrire chaque doc unique une seule fois
-        for (const [id, fields] of Object.entries(updates)) {
-          transaction.update(doc(db, 'salons', roomId, 'joueurs', id), fields);
-        }
-      });
-      setIsSelecting(false);
-      setSelectedPlayers([]);
-      alert("💖 Le couple a été formé avec succès !");
-    } catch (err) {
-      console.error('Cupidon error:', err);
-      alert('Erreur lors de la formation du couple : ' + (err.message || 'Erreur inconnue'));
-    }
-  };
-
 
   const handleComedienAction = async (roleId) => {
     if (!me || me.role !== 'comedien') return;
-    if (!window.confirm("Voulez-vous incarner ce rôle pour cette nuit ?")) return;
-
+    if (!window.confirm("Incarner ce rôle ?")) return;
     try {
       const batch = writeBatch(db);
-      
-      batch.update(doc(db, 'salons', roomId, 'joueurs', me.id), {
-        role: roleId
-      });
-      
-      batch.update(doc(db, 'salons', roomId), {
-        roles_dispo_comedien: arrayRemove(roleId)
-      });
-      
+      batch.update(doc(db, 'salons', roomId, 'joueurs', me.id), { role: roleId });
+      batch.update(doc(db, 'salons', roomId), { roles_dispo_comedien: arrayRemove(roleId) });
       await batch.commit();
       setShowComedienModal(false);
-      alert("Vous incarnez désormais ce rôle.");
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors du choix.");
-    }
+    } catch (err) { alert("Erreur."); }
   };
 
-  if (loading) {
-    return (
-      <div className="player-screen"><div className="loading"><div className="spinner"></div></div></div>
-    );
-  }
+  if (loading) return <div className="player-screen"><div className="loading"><div className="spinner"></div></div></div>;
+  if (error) return <div className="player-screen"><div className="error-box"><div className="error-content"><AlertTriangle size={48} /><h2>Erreur</h2><p>{error}</p></div></div></div>;
 
-  if (error) {
-    return (
-      <div className="player-screen"><div className="error-box"><div className="error-content"><AlertTriangle size={48} /><h2>Erreur</h2><p>{error}</p></div></div></div>
-    );
-  }
-
-  // Phase 0: Login
   if (!isJoined || !me) {
     return (
       <div className="player-screen">
@@ -310,19 +195,8 @@ export default function PlayerScreen() {
              <div className="home-icon glow-effect" style={{margin: '0 auto 1.5rem'}}><User size={48} /></div>
              <h2 className="title-font" style={{marginBottom: '1rem'}}>Rejoindre le salon {roomId}</h2>
              <form onSubmit={handleJoin} style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                <input 
-                  type="text" 
-                  className="text-font"
-                  style={{padding: '12px', borderRadius: '8px', border: '1px solid var(--card-border)', background: 'var(--input-bg)', color: 'var(--text-color)'}}
-                  placeholder="Votre Nom ou Pseudo" 
-                  value={playerName} 
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  maxLength={20}
-                  required
-                />
-                <button type="submit" className="btn-primary title-font glow-button" style={{display: 'flex', justifyContent: 'center', gap: '10px'}}>
-                  <Send size={18} /> Rejoindre
-                </button>
+                <input type="text" className="text-font" style={{padding: '12px', borderRadius: '8px', border: '1px solid var(--card-border)', background: 'var(--input-bg)', color: 'var(--text-color)'}} placeholder="Votre Pseudo" value={playerName} onChange={(e) => setPlayerName(e.target.value)} maxLength={20} required />
+                <button type="submit" className="btn-primary title-font glow-button" style={{display: 'flex', justifyContent: 'center', gap: '10px'}}><Send size={18} /> Rejoindre</button>
              </form>
           </div>
         </div>
@@ -330,18 +204,10 @@ export default function PlayerScreen() {
     );
   }
 
-  // Current role info
   const myRoleData = me.role ? rolesData.find(r => r.id === me.role) : null;
 
-  // Phase 1: Card Selection & Waiting Room
   if (salonData.statut === "en_attente") {
-    // If I haven't picked a card yet
-    if (me.carte_choisie === null) {
-      // Calculate available cards
-      const totalRoles = salonData.roles_selectionnes.length;
-      const allCards = Array.from({ length: totalRoles }, (_, i) => i);
-      const takenCards = joueurs.filter(j => j.carte_choisie !== null).map(j => j.carte_choisie);
-      
+    if (salonData.distribution_mode === 'manuelle') {
       return (
         <div className="player-screen">
           <ThemeToggle />
@@ -349,24 +215,35 @@ export default function PlayerScreen() {
             <div>
               <span className="room-badge">SALON {roomId}</span>
               <h1 className="player-title">Bienvenue, <strong>{me.nom}</strong></h1>
-              <p className="text-font text-muted">Choisissez une carte pour découvrir votre rôle secret.</p>
+              <p className="text-font text-muted">Le MJ distribue les rôles manuellement. Veuillez patienter...</p>
             </div>
-            
+            {me.role && (
+               <div style={{marginTop: '2rem', textAlign: 'center'}}>
+                  <p className="text-font" style={{color: 'var(--success)', fontWeight: 'bold', fontSize: '1.2rem'}}>✅ Rôle assigné par le MJ. Attente du lancement...</p>
+               </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    
+    if (me.carte_choisie === null) {
+      const totalRoles = salonData.roles_selectionnes.length;
+      const allCards = Array.from({ length: totalRoles }, (_, i) => i);
+      const takenCards = joueurs.filter(j => j.carte_choisie !== null && j.carte_choisie !== 999).map(j => j.carte_choisie);
+      return (
+        <div className="player-screen">
+          <ThemeToggle />
+          <div className="player-content">
+            <div>
+              <span className="room-badge">SALON {roomId}</span>
+              <h1 className="player-title">Bienvenue, <strong>{me.nom}</strong></h1>
+              <p className="text-font text-muted">Choisissez une carte pour découvrir votre rôle.</p>
+            </div>
             <div className="cards-grid" style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '15px', marginTop: '2rem'}}>
               {allCards.map(index => {
-                 const isTaken = takenCards.includes(index);
-                 if (isTaken) return null; // Card disappeared
-                 
-                 return (
-                   <button 
-                     key={index} 
-                     onClick={() => handlePickCard(index)}
-                     className="mystery-card glass-panel text-font"
-                     style={{height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s'}}
-                   >
-                     {index + 1}
-                   </button>
-                 );
+                 if (takenCards.includes(index)) return null;
+                 return <button key={index} onClick={() => handlePickCard(index)} className="mystery-card glass-panel text-font" style={{height: '120px', fontSize: '2rem', fontWeight: 'bold'}}>{index + 1}</button>;
               })}
             </div>
           </div>
@@ -374,25 +251,16 @@ export default function PlayerScreen() {
       );
     }
     
-    // If I picked a card but we wait for MJ
     return (
       <div className="player-screen">
         <ThemeToggle />
         <div className="ambient-bg" style={{ backgroundColor: myRoleData?.color || '#000' }}></div>
         <div className="player-content">
-          <div>
-            <span className="room-badge">SALON {roomId}</span>
-            <h1 className="player-title">En attente du Maître du Jeu...</h1>
-          </div>
-          
+          <div><span className="room-badge">SALON {roomId}</span><h1 className="player-title">En attente du MJ...</h1></div>
           <div className="perspective-container">
             <button onClick={() => setShowRole(!showRole)} className={`flip-card ${showRole ? 'flipped' : ''}`}>
-              <div className="flip-card-front">
-                <EyeOff size={64} style={{color: 'var(--text-muted)', marginBottom: '1.5rem'}} />
-                <p>Appuyez pour révéler</p>
-                <small>Assurez-vous que personne ne regarde votre écran.</small>
-              </div>
-              <div className="flip-card-back" style={{ borderColor: myRoleData?.color || 'var(--card-border)', boxShadow: `0 10px 40px ${myRoleData?.color}40` }}>
+              <div className="flip-card-front"><EyeOff size={64} style={{color: 'var(--text-muted)', marginBottom: '1.5rem'}} /><p>Appuyez pour révéler</p></div>
+              <div className="flip-card-back" style={{ borderColor: myRoleData?.color, boxShadow: `0 10px 40px ${myRoleData?.color}40` }}>
                 <div className="card-gradient" style={{ background: `linear-gradient(to bottom, ${myRoleData?.color}30, transparent)` }}></div>
                 <div className="card-inner">
                   <h2 className="role-name" style={{ color: myRoleData?.color }}>{myRoleData?.name}</h2>
@@ -407,15 +275,11 @@ export default function PlayerScreen() {
     );
   }
 
-  // Phase 2: In Game (statut === "en_cours" or "nuit_0")
+  // Game Phases
   const isDead = me.statut_joueur === "mort";
-  // Cibles valides pour le Voleur : tous les autres joueurs avec un rôle assigné et en vie
-  const voleurTargets = joueurs.filter(j => j.id !== me.id && j.role && j.statut_joueur !== "mort");
   const allAlivePlayers = joueurs.filter(j => j.statut_joueur !== "mort");
-
   const isMeLoup = me.role?.toLowerCase().includes('loup') || me.statut_joueur === 'infecte';
   const loupTargets = allAlivePlayers.filter(j => !(j.role?.toLowerCase().includes('loup') || j.statut_joueur === 'infecte'));
-
 
   return (
     <div className="player-screen">
@@ -424,7 +288,7 @@ export default function PlayerScreen() {
       <div className="player-content">
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
            <span className="room-badge">SALON {roomId}</span>
-           {isDead && <span className="room-badge" style={{background: 'var(--danger)', color: 'white'}}>VOUS ÊTES MORT</span>}
+           {isDead && <span className="room-badge" style={{background: 'var(--danger)', color: 'white'}}>MORT</span>}
         </div>
         
         <div style={{marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
@@ -433,207 +297,270 @@ export default function PlayerScreen() {
               <p className="text-font" style={{color: myRoleData?.color, fontWeight: 'bold'}}>{showRole ? myRoleData?.name : 'Rôle Masqué'}</p>
            </div>
            {!isDead && (
-              <button 
-                 onClick={() => setShowRole(!showRole)} 
-                 className="btn-secondary text-font" 
-                 style={{padding: '8px 12px', fontSize: '0.9rem', borderColor: myRoleData?.color, color: myRoleData?.color}}
-              >
+              <button onClick={() => setShowRole(!showRole)} className="btn-secondary text-font" style={{padding: '8px 12px', fontSize: '0.9rem', borderColor: myRoleData?.color, color: myRoleData?.color}}>
                  {showRole ? 'Cacher' : 'Voir Rôle'}
               </button>
            )}
         </div>
 
-        {/* INFO COUPLE : affichage du partenaire avec son rôle */}
         {salonData?.couple?.includes(me.id) && (() => {
           const partnerId = salonData.couple.find(id => id !== me.id);
           const partner = joueurs.find(j => j.id === partnerId);
           if (!partner) return null;
           const pRoleData = rolesData.find(r => r.id === partner.role);
-          const pRoleName = pRoleData?.name || (partner.role || 'Rôle inconnu');
-          const pColor = pRoleData?.color || '#ec4899';
           return (
             <div style={{marginTop: '1rem', padding: '12px 14px', background: 'rgba(236,72,153,0.15)', border: '2px solid #ec4899', borderRadius: '10px'}}>
-              <p className="text-font" style={{margin: 0, color: '#ec4899', fontWeight: 'bold', fontSize: '1rem'}}>
-                💖 Vous êtes en couple avec <span style={{color: '#fff'}}>{partner.nom}</span>
-              </p>
-              <p className="text-font" style={{margin: '4px 0 0', fontSize: '0.9rem'}}>
-                Rôle de votre partenaire : 
-                <strong style={{color: pColor}}>{pRoleName}</strong>
-                {partner.statut_joueur === 'mort' && <span style={{color: 'var(--danger)', marginLeft: '8px'}}>— ☠️ Décédé(e)</span>}
-              </p>
+              <p className="text-font" style={{margin: 0, color: '#ec4899', fontWeight: 'bold'}}>💖 En couple avec {partner.nom}</p>
+              <p className="text-font" style={{margin: '4px 0 0', fontSize: '0.9rem'}}>Rôle : <strong style={{color: pRoleData?.color||'#ec4899'}}>{pRoleData?.name||'Inconnu'}</strong></p>
             </div>
           );
         })()}
 
-        {/* Powers Section */}
         {!isDead && (
            <div className="powers-section" style={{marginTop: '2rem'}}>
-              {/* VOLEUR */}
-              {me.role === 'voleur' && !me.pouvoir_utilise && (
-                 <button 
-                   onClick={() => setShowVoleurModal(true)} 
-                   className="btn-primary title-font glow-button" 
-                   style={{width: '100%', marginBottom: '1rem', background: 'var(--danger)', border: 'none'}}
-                 >
-                    Activer le Vol
-                 </button>
-              )}
-              {me.role === 'voleur' && me.pouvoir_utilise && (
-                 <div style={{padding: '0.75rem', background: 'rgba(100,100,100,0.2)', borderRadius: '8px', textAlign: 'center', marginBottom: '1rem'}}>
-                   <p className="text-font text-muted" style={{fontSize: '0.9rem'}}>🔒 Vol déjà effectué</p>
-                 </div>
-              )}
-
               
-              {/* COMEDIEN */}
-              {me.role === 'comedien' && salonData.roles_dispo_comedien && salonData.roles_dispo_comedien.length > 0 && (
-                 <button 
-                   onClick={() => setShowComedienModal(true)} 
-                   className="btn-primary title-font glow-button" 
-                   style={{width: '100%', marginBottom: '1rem', background: '#fbbf24', color: 'black', border: 'none'}}
-                 >
-                    Incarner un Rôle
-                 </button>
-              )}
-
-              {/* CUPIDON - Bouton d'activation */}
-              {me.role === 'cupidon' && !me.pouvoir_utilise && !isSelecting && (
-                 <button 
-                   onClick={() => { setIsSelecting(true); setSelectedPlayers([]); }} 
-                   className="btn-primary title-font glow-button" 
-                   style={{width: '100%', marginBottom: '1rem', background: '#ec4899', border: 'none'}}
-                 >
-                    ✨ Activer le pouvoir de Cupidon
-                 </button>
-              )}
-
-              {/* LOUPS-GAROUS */}
-              {salonData.statut === 'nuit_loups' && isMeLoup && !me.a_vote && (
-                 <div style={{marginBottom: '1rem', padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '12px'}}>
-                   <h3 className="title-font" style={{color: '#ef4444', marginBottom: '0.5rem'}}>🐺 Tour des Loups</h3>
-                   <p className="text-font text-muted" style={{fontSize: '0.85rem', marginBottom: '1rem'}}>
-                     Choisissez votre victime collectivement.
-                   </p>
-                   <ul style={{listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
-                     {loupTargets.map(j => {
-                       const isSelected = salonData.vote_loup_temporaire === j.nom;
+              {/* CUPIDON */}
+              {salonData.statut === 'nuit_cupidon' && me.role === 'cupidon' && !me.pouvoir_utilise && (
+                 <div style={{padding: '1rem', background: 'rgba(236,72,153,0.1)', border: '1px solid #ec4899', borderRadius: '12px', marginBottom: '1rem'}}>
+                   <h3 className="title-font" style={{color: '#ec4899'}}>Cupidon</h3>
+                   <p className="text-font text-muted" style={{fontSize: '0.85rem', marginBottom: '1rem'}}>Sélectionnez 2 joueurs pour former le couple.</p>
+                   <ul style={{listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                     {allAlivePlayers.map(j => {
+                       const isSel = selectedPlayers.includes(j.id);
                        return (
-                         <li key={j.id}
-                           onClick={() => {
-                             updateDoc(doc(db, 'salons', roomId), { vote_loup_temporaire: j.nom }).catch(console.error);
+                         <li key={j.id} onClick={() => {
+                             if (isSel) setSelectedPlayers(selectedPlayers.filter(id => id !== j.id));
+                             else if (selectedPlayers.length < 2) setSelectedPlayers([...selectedPlayers, j.id]);
                            }}
-                           style={{
-                             padding: '12px 14px',
-                             borderRadius: '8px',
-                             cursor: 'pointer',
-                             display: 'flex',
-                             alignItems: 'center',
-                             gap: '10px',
-                             transition: 'all 0.2s',
-                             backgroundColor: isSelected ? '#ef4444' : 'rgba(255,255,255,0.05)',
-                             fontWeight: isSelected ? 'bold' : 'normal',
-                             color: isSelected ? '#fff' : 'var(--text-color)',
-                             border: isSelected ? '2px solid #b91c1c' : '2px solid transparent'
-                           }}
+                           style={{padding: '10px', borderRadius: '8px', cursor: 'pointer', background: isSel?'#ec4899':'rgba(255,255,255,0.05)', color: isSel?'#fff':'var(--text-color)', border: isSel?'1px solid #be185d':'1px solid transparent'}}
                          >
-                           <span style={{fontSize: '1.2rem'}}>{isSelected ? '🩸' : '○'}</span>
-                           <span>{j.nom}</span>
+                           {isSel ? '♥️' : '○'} {j.nom}
                          </li>
                        );
                      })}
                    </ul>
-                   <div style={{marginTop: '1.2rem'}}>
-                     <button
-                       onClick={async () => {
-                         if (!salonData.vote_loup_temporaire) return;
-                         try {
-                           await runTransaction(db, async (transaction) => {
-                             transaction.update(doc(db, 'salons', roomId), { victime_loups: salonData.vote_loup_temporaire });
-                             transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), { a_vote: true });
-                           });
-                         } catch (err) {
-                           console.error('Erreur vote loups:', err);
-                           alert('Erreur lors du vote.');
-                         }
-                       }}
-                       disabled={!salonData.vote_loup_temporaire}
-                       className="btn-primary title-font glow-button"
-                       style={{width: '100%', background: salonData.vote_loup_temporaire ? '#ef4444' : 'rgba(100,100,100,0.3)', border: 'none', opacity: salonData.vote_loup_temporaire ? 1 : 0.5}}
-                     >
-                       🐺 Confirmer le festin
-                     </button>
-                   </div>
+                   <button onClick={async () => {
+                       if (selectedPlayers.length !== 2) return;
+                       try {
+                         await runTransaction(db, async (transaction) => {
+                           transaction.update(doc(db, 'salons', roomId), { couple: [selectedPlayers[0], selectedPlayers[1]] });
+                           transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), { pouvoir_utilise: true, a_vote: true });
+                           transaction.update(doc(db, 'salons', roomId, 'joueurs', selectedPlayers[0]), { statut_joueur: 'En couple' });
+                           transaction.update(doc(db, 'salons', roomId, 'joueurs', selectedPlayers[1]), { statut_joueur: 'En couple' });
+                         });
+                       } catch(e) { console.error(e); }
+                     }} 
+                     disabled={selectedPlayers.length !== 2} className="btn-primary title-font glow-button" style={{marginTop: '1rem', width: '100%', background: '#ec4899', border: 'none'}}
+                   >Valider le couple</button>
                  </div>
               )}
-              {salonData.statut === 'nuit_loups' && isMeLoup && me.a_vote && (
-                 <div style={{marginBottom: '1rem', padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '12px', textAlign: 'center'}}>
-                   <h3 className="title-font" style={{color: '#ef4444', marginBottom: '0.5rem'}}>🐺 Vote confirmé</h3>
-                   <p className="text-font text-muted">Vous avez choisi de dévorer <strong>{salonData.victime_loups}</strong>. Attendez la fin de la nuit.</p>
+
+              {/* VOLEUR */}
+              {salonData.statut === 'nuit_voleur' && me.role === 'voleur' && !me.a_vote && (
+                 <div style={{padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--danger)', borderRadius: '12px', marginBottom: '1rem'}}>
+                   <h3 className="title-font text-danger">Action du Voleur</h3>
+                   <button onClick={() => setShowVoleurModal(true)} className="btn-primary title-font glow-button" style={{width: '100%', marginBottom: '1rem', background: 'var(--danger)', border: 'none'}}>Voler une carte</button>
+                   <button onClick={() => handleVoleurAction('passer')} className="btn-secondary text-font" style={{width: '100%'}}>Ne rien faire / Passer</button>
                  </div>
+              )}
+
+              {/* SALVATEUR */}
+              {salonData.statut === 'nuit_salvateur' && me.role === 'salvateur' && !me.a_vote && (
+                 <div style={{padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid #3b82f6', borderRadius: '12px', marginBottom: '1rem'}}>
+                   <h3 className="title-font" style={{color: '#3b82f6'}}>🛡️ Tour du Salvateur</h3>
+                   <p className="text-font text-muted" style={{fontSize: '0.85rem', marginBottom: '1rem'}}>Protégez un joueur. Vous ne pouvez pas protéger la même personne deux nuits de suite.</p>
+                   <ul style={{listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                     {allAlivePlayers.map(j => {
+                       const isSel = salvateurCible === j.nom;
+                       const disabled = j.nom === me.dernier_protege;
+                       return (
+                         <li key={j.id} onClick={() => { if(!disabled) setSalvateurCible(j.nom); }}
+                           style={{padding: '10px', borderRadius: '8px', cursor: disabled ? 'not-allowed' : 'pointer', background: disabled ? 'rgba(0,0,0,0.5)' : isSel ? '#3b82f6' : 'rgba(255,255,255,0.05)', color: isSel ? '#fff' : disabled ? 'var(--text-muted)' : 'var(--text-color)'}}
+                         >
+                           {isSel ? '🛡️' : disabled ? '🚫' : '○'} {j.nom} {disabled && "(Protégé dernièrement)"}
+                         </li>
+                       );
+                     })}
+                   </ul>
+                   <button onClick={async () => {
+                       if (!salvateurCible) return;
+                       try {
+                         await updateDoc(doc(db, 'salons', roomId), { joueur_protege: salvateurCible });
+                         await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { a_vote: true, dernier_protege: salvateurCible });
+                       } catch(e) { console.error(e); }
+                     }} 
+                     disabled={!salvateurCible} className="btn-primary title-font glow-button" style={{marginTop: '1rem', width: '100%', background: '#3b82f6', border: 'none'}}
+                   >Protéger {salvateurCible}</button>
+                 </div>
+              )}
+
+              {/* VOYANTE */}
+              {salonData.statut === 'nuit_voyante' && me.role === 'voyante' && !me.a_vote && (
+                 <div style={{padding: '1rem', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid #8b5cf6', borderRadius: '12px', marginBottom: '1rem'}}>
+                   <h3 className="title-font" style={{color: '#8b5cf6'}}>👁️ Tour de la Voyante</h3>
+                   {voyanteCible ? (
+                     <div style={{textAlign: 'center'}}>
+                       <p className="text-font" style={{marginBottom: '1rem'}}>Le rôle de {voyanteCible.nom} est :</p>
+                       <h2 className="title-font" style={{color: voyanteCible.roleObj?.color, fontSize: '2rem', marginBottom: '1rem'}}>{voyanteCible.roleObj?.name}</h2>
+                       <button onClick={async () => {
+                           try { await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { a_vote: true }); } catch(e) {}
+                         }} className="btn-primary title-font glow-button" style={{width: '100%', background: '#8b5cf6', border: 'none'}}
+                       >Fermer les yeux</button>
+                     </div>
+                   ) : (
+                     <ul style={{listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                       {allAlivePlayers.filter(j=>j.id!==me.id).map(j => (
+                         <li key={j.id} onClick={() => {
+                             const rData = rolesData.find(r => r.id === j.role);
+                             setVoyanteCible({nom: j.nom, roleObj: rData});
+                           }}
+                           style={{padding: '10px', borderRadius: '8px', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '10px'}}
+                         >
+                           👁️ {j.nom}
+                         </li>
+                       ))}
+                     </ul>
+                   )}
+                 </div>
+              )}
+
+              {/* LOUPS-GAROUS */}
+              {salonData.statut === 'nuit_loups' && isMeLoup && !me.a_vote && (
+                 <div style={{padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '12px', marginBottom: '1rem'}}>
+                   <h3 className="title-font text-danger">🐺 Tour des Loups</h3>
+                   <ul style={{listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                     {loupTargets.map(j => {
+                       const isSel = salonData.vote_loup_temporaire === j.nom;
+                       return (
+                         <li key={j.id} onClick={() => updateDoc(doc(db, 'salons', roomId), { vote_loup_temporaire: j.nom }).catch(e=>{})}
+                           style={{padding: '10px', borderRadius: '8px', cursor: 'pointer', background: isSel ? '#ef4444' : 'rgba(255,255,255,0.05)', color: isSel ? '#fff' : 'var(--text-color)', border: isSel ? '1px solid #b91c1c' : '1px solid transparent'}}
+                         >
+                           {isSel ? '🩸' : '○'} {j.nom}
+                         </li>
+                       );
+                     })}
+                   </ul>
+                   <button onClick={async () => {
+                       if (!salonData.vote_loup_temporaire) return;
+                       try {
+                         await runTransaction(db, async (transaction) => {
+                           transaction.update(doc(db, 'salons', roomId), { victime_loups: salonData.vote_loup_temporaire });
+                           transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), { a_vote: true });
+                         });
+                       } catch (e) { console.error(e); }
+                     }} 
+                     disabled={!salonData.vote_loup_temporaire} className="btn-primary title-font glow-button" style={{marginTop: '1rem', width: '100%', background: '#ef4444', border: 'none'}}
+                   >Confirmer le festin</button>
+                 </div>
+              )}
+
+              {/* SORCIÈRE */}
+              {salonData.statut === 'nuit_sorciere' && me.role === 'sorciere' && !me.a_vote_sorciere && (
+                 <div style={{padding: '1rem', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid #8b5cf6', borderRadius: '12px', marginBottom: '1rem'}}>
+                   <h3 className="title-font" style={{color: '#8b5cf6'}}>🧙‍♀️ Tour de la Sorcière</h3>
+                   
+                   <div style={{marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(139, 92, 246, 0.3)'}}>
+                     <p className="text-font">🐺 Les loups ont décidé de tuer : <strong>{salonData.victime_loups || "Personne"}</strong></p>
+                     {!me.potion_vie_utilisee ? (
+                        <button onClick={() => setPotionVieActive(!potionVieActive)} className={`btn-secondary text-font ${potionVieActive ? 'glow-button' : ''}`} style={{marginTop: '10px', width: '100%', borderColor: potionVieActive ? '#10b981' : '#8b5cf6', color: potionVieActive ? '#10b981' : 'var(--text-color)'}}>
+                          {potionVieActive ? '✅ Potion de Vie (Sauver)' : '🧪 Utiliser Potion de Vie'}
+                        </button>
+                     ) : <p className="text-font text-muted" style={{marginTop: '10px'}}>🧪 Potion de vie indisponible</p>}
+                   </div>
+
+                   <div style={{marginBottom: '1rem'}}>
+                     {!me.potion_mort_utilisee ? (
+                        <>
+                          <button onClick={() => setShowPotionMortSelection(!showPotionMortSelection)} className="btn-secondary text-font" style={{width: '100%', borderColor: '#ef4444', color: cibleMortLocal ? '#ef4444' : 'var(--text-color)'}}>
+                            {cibleMortLocal ? `💀 Cible de mort : ${cibleMortLocal}` : '💀 Utiliser Potion de Mort'}
+                          </button>
+                          {showPotionMortSelection && (
+                            <ul style={{listStyle: 'none', padding: 0, marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                              {allAlivePlayers.filter(j=>j.id!==me.id).map(j => {
+                                const isSel = cibleMortLocal === j.nom;
+                                return (
+                                  <li key={j.id} onClick={() => { setCibleMortLocal(isSel ? null : j.nom); if(!isSel) setShowPotionMortSelection(false); }}
+                                    style={{padding: '10px', borderRadius: '8px', cursor: 'pointer', background: isSel ? '#ef4444' : 'rgba(255,255,255,0.05)', color: isSel ? '#fff' : 'var(--text-color)', border: isSel ? '1px solid #b91c1c' : '1px solid transparent'}}
+                                  >
+                                    {isSel ? '💀' : '○'} {j.nom}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </>
+                     ) : <p className="text-font text-muted">💀 Potion de mort indisponible</p>}
+                   </div>
+
+                   <button onClick={async () => {
+                       try {
+                         await runTransaction(db, async (transaction) => {
+                           const updatesSalon = {};
+                           const updatesMe = { a_vote_sorciere: true };
+                           if (potionVieActive) { updatesSalon.victime_sauvee = true; updatesMe.potion_vie_utilisee = true; }
+                           if (cibleMortLocal) { updatesSalon.victime_sorciere = cibleMortLocal; updatesMe.potion_mort_utilisee = true; }
+                           if (Object.keys(updatesSalon).length > 0) transaction.update(doc(db, 'salons', roomId), updatesSalon);
+                           transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), updatesMe);
+                         });
+                       } catch (err) { console.error(err); }
+                     }} className="btn-primary title-font glow-button" style={{width: '100%', background: '#8b5cf6', border: 'none'}}
+                   >Terminer le tour</button>
+                 </div>
+              )}
+
+              {/* COMEDIEN */}
+              {me.role === 'comedien' && salonData.roles_dispo_comedien && salonData.roles_dispo_comedien.length > 0 && (
+                 <button onClick={() => setShowComedienModal(true)} className="btn-primary title-font glow-button" style={{width: '100%', marginBottom: '1rem', background: '#fbbf24', color: 'black', border: 'none'}}>Incarner un Rôle</button>
               )}
            </div>
         )}
 
-        {/* CUPIDON - Interface de sélection inline */}
-        {me.role === 'cupidon' && !me.pouvoir_utilise && isSelecting && (
-           <div style={{marginTop: '1.5rem', padding: '1rem', background: 'rgba(236,72,153,0.1)', border: '1px solid #ec4899', borderRadius: '12px'}}>
-             <h3 className="title-font" style={{color: '#ec4899', marginBottom: '0.5rem'}}>Cupidon — Choisissez 2 joueurs</h3>
-             <p className="text-font text-muted" style={{fontSize: '0.85rem', marginBottom: '1rem'}}>Vous pouvez vous inclure dans le couple. ({selectedPlayers.length}/2 sélectionnés)</p>
-             <ul style={{listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
-               {allAlivePlayers.map(j => {
-                 const isSel = selectedPlayers.includes(j.id);
+        {/* VILLAGE VOTE (JOUR_VOTE) */}
+        {!isDead && salonData.statut === 'jour_vote' && (
+           <div style={{marginTop: '2rem'}}>
+             <h3 className="title-font" style={{color: '#f59e0b', marginBottom: '1rem'}}>☀️ Phase de Vote du Village</h3>
+             
+             {/* POUVOIR ILLUSIONNISTE */}
+             {me.role === 'illusionniste' && me.illusion_dispo && (
+                <div style={{marginBottom: '1rem', padding: '1rem', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid #8b5cf6', borderRadius: '12px'}}>
+                   <h4 className="title-font" style={{color: '#c4b5fd', marginBottom: '0.5rem'}}>✨ Pouvoir de l'Illusionniste</h4>
+                   <p className="text-font" style={{fontSize: '0.85rem', marginBottom: '1rem'}}>Vous pouvez annuler la mort du prochain condamné au bûcher (vous y compris). Utilisable 1 fois.</p>
+                   <button onClick={async () => {
+                       if(!window.confirm("Activer l'Illusion pour ce vote ?")) return;
+                       try {
+                         await updateDoc(doc(db, 'salons', roomId), { illusion_active: true });
+                         await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { illusion_dispo: false });
+                         alert("Illusion activée secrètement pour le vote de ce jour !");
+                       } catch(e) {}
+                     }} className="btn-primary title-font glow-button" style={{width: '100%', background: '#8b5cf6', border: 'none'}}
+                   >Activer mon Illusion</button>
+                </div>
+             )}
+
+             <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Qui voulez-vous éliminer aujourd'hui ?</p>
+             <ul style={{listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
+               {allAlivePlayers.filter(j=>j.id!==me.id).map(j => {
+                 const isMyVote = me.vote_jour === j.nom;
                  return (
-                   <li key={j.id}
-                     onClick={() => {
-                       if (isSel) {
-                         setSelectedPlayers(selectedPlayers.filter(id => id !== j.id));
-                       } else if (selectedPlayers.length < 2) {
-                         setSelectedPlayers([...selectedPlayers, j.id]);
-                       }
+                   <li key={j.id} onClick={async () => {
+                       try {
+                         await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { vote_jour: isMyVote ? null : j.nom });
+                       } catch(e) {}
                      }}
-                     style={{
-                       padding: '12px 14px',
-                       borderRadius: '8px',
-                       cursor: 'pointer',
-                       display: 'flex',
-                       alignItems: 'center',
-                       gap: '10px',
-                       transition: 'all 0.2s',
-                       backgroundColor: isSel ? '#ec4899' : 'rgba(255,255,255,0.05)',
-                       fontWeight: isSel ? 'bold' : 'normal',
-                       color: isSel ? '#fff' : 'var(--text-color)',
-                       border: isSel ? '2px solid #be185d' : '2px solid transparent'
-                     }}
+                     style={{padding: '12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: isMyVote ? '#ef4444' : 'rgba(255,255,255,0.05)', color: isMyVote ? '#fff' : 'var(--text-color)', border: isMyVote ? '1px solid #b91c1c' : '1px solid transparent'}}
                    >
-                     <span style={{fontSize: '1.2rem'}}>{isSel ? '♥️' : '○'}</span>
-                     <span>{j.nom} {j.id === me.id ? <em style={{opacity: 0.8}}>(Vous)</em> : ''}</span>
+                     <span>{j.nom}</span>
+                     <span>{isMyVote ? '✅ Voté' : 'Voter contre'}</span>
                    </li>
                  );
                })}
              </ul>
-             <div style={{display: 'flex', gap: '10px', marginTop: '1.2rem'}}>
-               <button
-                 onClick={handleCupidonAction}
-                 disabled={selectedPlayers.length !== 2}
-                 className="btn-primary title-font glow-button"
-                 style={{flex: 1, background: selectedPlayers.length === 2 ? '#ec4899' : 'rgba(100,100,100,0.3)', border: 'none', opacity: selectedPlayers.length === 2 ? 1 : 0.5, cursor: selectedPlayers.length === 2 ? 'pointer' : 'not-allowed'}}
-               >
-                 💖 Valider le couple
-               </button>
-               <button
-                 onClick={() => { setIsSelecting(false); setSelectedPlayers([]); }}
-                 className="btn-secondary text-font"
-                 style={{padding: '0 1rem'}}
-               >
-                 Annuler
-               </button>
-             </div>
            </div>
-         )}
+        )}
 
         <div className="players-list-panel glass-panel" style={{marginTop: '2rem'}}>
            <h3 className="title-font" style={{marginBottom: '1rem', borderBottom: '1px solid var(--card-border)', paddingBottom: '0.5rem'}}>Joueurs en vie</h3>
-           <ul style={{listStyle: 'none', padding: 0, margin: 0}} className="text-font">
+           <ul style={{listStyle: 'none', padding: 0}} className="text-font">
               {joueurs.filter(j => j.statut_joueur !== "mort").map(j => (
                  <li key={j.id} style={{padding: '10px', borderBottom: '1px solid var(--card-border)', display: 'flex', alignItems: 'center', gap: '10px'}}>
                     <div style={{width: '10px', height: '10px', borderRadius: '50%', background: 'var(--success)'}}></div>
@@ -644,24 +571,17 @@ export default function PlayerScreen() {
         </div>
       </div>
 
-      {/* MODALS FOR POWERS */}
+      {/* MODALS */}
       {showVoleurModal && (
         <div className="modal-overlay">
            <div className="modal-content glass-panel border-accent" style={{borderColor: 'var(--danger)'}}>
               <h3 className="title-font text-danger" style={{marginBottom: '1rem'}}>Action du Voleur</h3>
-              <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Choisissez un joueur à voler. S'il s'agit d'un loup, il mourra instantanément.</p>
-              
+              <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Choisissez un joueur à voler.</p>
               <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                 {voleurTargets.map(p => {
-                    return (
-                      <button key={p.id} onClick={() => handleVoleurAction(p.id)} className="btn-secondary text-font" style={{justifyContent: 'flex-start'}}>
-                         Voler {p.nom}
-                      </button>
-                    );
-                 })}
-                 {voleurTargets.length === 0 && <p className="text-font text-muted">Aucun joueur avec un rôle disponible.</p>}
+                 {joueurs.filter(j => j.id !== me.id && j.role && j.statut_joueur !== "mort").map(p => (
+                    <button key={p.id} onClick={() => handleVoleurAction(p.id)} className="btn-secondary text-font" style={{justifyContent: 'flex-start'}}>Voler {p.nom}</button>
+                 ))}
               </div>
-
               <button onClick={() => setShowVoleurModal(false)} className="btn-secondary text-font" style={{marginTop: '1.5rem', width: '100%', justifyContent: 'center'}}>Annuler</button>
            </div>
         </div>
@@ -671,25 +591,16 @@ export default function PlayerScreen() {
         <div className="modal-overlay">
            <div className="modal-content glass-panel border-accent" style={{borderColor: '#fbbf24'}}>
               <h3 className="title-font" style={{marginBottom: '1rem', color: '#fbbf24'}}>Action du Comédien</h3>
-              <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Choisissez un rôle à incarner. Ce rôle ne sera plus disponible par la suite.</p>
-              
               <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                  {salonData.roles_dispo_comedien.map(rId => {
                     const rData = rolesData.find(rd => rd.id === rId);
-                    return (
-                       <button key={rId} onClick={() => handleComedienAction(rId)} className="btn-secondary text-font" style={{justifyContent: 'flex-start', color: rData?.color, borderColor: rData?.color}}>
-                          Incarner {rData?.name}
-                       </button>
-                    )
+                    return <button key={rId} onClick={() => handleComedienAction(rId)} className="btn-secondary text-font" style={{color: rData?.color, borderColor: rData?.color}}>Incarner {rData?.name}</button>
                  })}
               </div>
-              <button onClick={() => setShowComedienModal(false)} className="btn-secondary text-font" style={{marginTop: '1.5rem', width: '100%', justifyContent: 'center'}}>Annuler</button>
+              <button onClick={() => setShowComedienModal(false)} className="btn-secondary text-font" style={{marginTop: '1.5rem', width: '100%'}}>Annuler</button>
            </div>
         </div>
       )}
-
-
-
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { collection, doc, setDoc, updateDoc, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, onSnapshot, writeBatch, runTransaction } from 'firebase/firestore';
 
 import { db } from './firebase';
 import { rolesData } from './rolesData';
@@ -21,115 +21,201 @@ export default function MjDashboard() {
   const { roomId } = useParams();
   const [salonData, setSalonData] = useState(null);
   const [joueurs, setJoueurs] = useState([]);
+  
+  // Config state
   const [selectedRoles, setSelectedRoles] = useState([]);
   const [comedienRoles, setComedienRoles] = useState([]);
+  const [distributionMode, setDistributionMode] = useState('aleatoire'); // 'aleatoire' ou 'manuelle'
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
     if (!roomId) return;
-    
-    // Ecoute du salon
     const unsubSalon = onSnapshot(doc(db, 'salons', roomId), (docSnap) => {
-      if (docSnap.exists()) {
-        setSalonData(docSnap.data());
-      } else {
-        setSalonData(null);
-      }
+      setSalonData(docSnap.exists() ? docSnap.data() : null);
     });
-
-    // Ecoute des joueurs
     const unsubJoueurs = onSnapshot(collection(db, 'salons', roomId, 'joueurs'), (snapshot) => {
       const jList = [];
       snapshot.forEach((d) => jList.push({ id: d.id, ...d.data() }));
       setJoueurs(jList);
     });
-
-    return () => {
-      unsubSalon();
-      unsubJoueurs();
-    };
+    return () => { unsubSalon(); unsubJoueurs(); };
   }, [roomId]);
 
+  // Config handlers
   const addRole = (roleId) => setSelectedRoles(prev => [...prev, roleId]);
-  const removeRole = (roleId) => {
-    setSelectedRoles(prev => {
-      const index = prev.lastIndexOf(roleId);
-      if (index !== -1) {
-        const n = [...prev];
-        n.splice(index, 1);
-        return n;
-      }
-      return prev;
-    });
-  };
-
-  const addComedienRole = (roleId) => {
-    if (comedienRoles.length < 3) setComedienRoles(prev => [...prev, roleId]);
-  };
-  const removeComedienRole = (roleId) => {
-    setComedienRoles(prev => {
-      const index = prev.lastIndexOf(roleId);
-      if (index !== -1) {
-        const n = [...prev];
-        n.splice(index, 1);
-        return n;
-      }
-      return prev;
-    });
-  };
-
+  const removeRole = (roleId) => setSelectedRoles(prev => {
+    const index = prev.lastIndexOf(roleId);
+    if (index !== -1) { const n = [...prev]; n.splice(index, 1); return n; }
+    return prev;
+  });
+  const addComedienRole = (roleId) => { if (comedienRoles.length < 3) setComedienRoles(prev => [...prev, roleId]); };
+  const removeComedienRole = (roleId) => setComedienRoles(prev => {
+    const index = prev.lastIndexOf(roleId);
+    if (index !== -1) { const n = [...prev]; n.splice(index, 1); return n; }
+    return prev;
+  });
   const hasComedien = selectedRoles.includes('comedien');
 
   const handleOpenSalon = async () => {
-    if (selectedRoles.length < 3) {
-      alert("Veuillez sélectionner au moins 3 rôles pour jouer.");
-      return;
-    }
-    if (hasComedien && comedienRoles.length !== 3) {
-      alert("Le rôle du Comédien nécessite exactement 3 rôles supplémentaires disponibles.");
-      return;
-    }
-
+    if (selectedRoles.length < 3) return alert("Veuillez sélectionner au moins 3 rôles.");
+    if (hasComedien && comedienRoles.length !== 3) return alert("Le Comédien nécessite 3 rôles supplémentaires.");
+    
     setIsGenerating(true);
     try {
       const shuffled = shuffleArray([...selectedRoles]);
       await setDoc(doc(db, 'salons', roomId), {
         code: roomId,
         statut: "en_attente",
+        distribution_mode: distributionMode,
         roles_selectionnes: selectedRoles,
         roles_dispo_comedien: comedienRoles,
-        roles_dispo_comedien_init: comedienRoles, // backup for reset
+        roles_dispo_comedien_init: comedienRoles,
         roles_melanges: shuffled,
-        couple: []
+        couple: [],
+        victime_loups: null,
+        victime_sauvee: false,
+        victime_sorciere: null,
+        vote_loup_temporaire: null,
+        joueur_protege: null,
+        illusion_active: false
       });
     } catch (error) {
-      console.error("Erreur:", error);
-      alert("Erreur de connexion Firebase.");
+      console.error(error); alert("Erreur de création du salon.");
     } finally {
       setIsGenerating(false);
     }
   };
 
+  const assignRoleManually = async (joueurId, roleId) => {
+    try {
+      await updateDoc(doc(db, 'salons', roomId, 'joueurs', joueurId), {
+        role: roleId,
+        carte_choisie: 999 // Indique qu'une carte a été assignée manuellement
+      });
+    } catch (e) { console.error(e); }
+  };
+
   const handleStartGame = async () => {
-    const cartesChoisies = joueurs.filter(j => j.carte_choisie !== null);
-    if (cartesChoisies.length !== salonData.roles_selectionnes.length) {
-       if (!window.confirm(`Seulement ${cartesChoisies.length} joueurs ont choisi une carte sur ${salonData.roles_selectionnes.length} rôles. Lancer quand même la partie ?`)) {
-           return;
+    if (salonData.distribution_mode === 'manuelle') {
+      const allAssigned = joueurs.every(j => j.role && j.role !== "");
+      if (!allAssigned) return alert("Tous les joueurs doivent avoir un rôle assigné en mode manuel.");
+    } else {
+      const cartesChoisies = joueurs.filter(j => j.carte_choisie !== null);
+      if (cartesChoisies.length !== salonData.roles_selectionnes.length) {
+         if (!window.confirm(`Seulement ${cartesChoisies.length} joueurs ont choisi une carte sur ${salonData.roles_selectionnes.length}. Lancer quand même ?`)) return;
+      }
+    }
+    
+    try {
+      await updateDoc(doc(db, 'salons', roomId), { statut: "nuit_cupidon" });
+    } catch (e) { console.error(e); alert("Erreur lors du lancement"); }
+  };
+
+  const changePhase = async (newPhase) => {
+    try { await updateDoc(doc(db, 'salons', roomId), { statut: newPhase }); } 
+    catch (e) { console.error(e); }
+  };
+
+  const handleApplyNightDeaths = async () => {
+    try {
+      await runTransaction(db, async (transaction) => {
+        const joueursRef = collection(db, 'salons', roomId, 'joueurs');
+        
+        let diedFromLoups = false;
+        let diedFromSorciere = false;
+
+        // 1. Victime Loups
+        if (salonData.victime_loups && !salonData.victime_sauvee) {
+          const loupVictimDoc = joueurs.find(j => j.nom === salonData.victime_loups);
+          if (loupVictimDoc && loupVictimDoc.nom !== salonData.joueur_protege) {
+             transaction.update(doc(db, 'salons', roomId, 'joueurs', loupVictimDoc.id), { statut_joueur: 'mort' });
+             diedFromLoups = true;
+          }
+        }
+        
+        // 2. Victime Sorcière
+        if (salonData.victime_sorciere) {
+          const sorcVictimDoc = joueurs.find(j => j.nom === salonData.victime_sorciere);
+          if (sorcVictimDoc) {
+             transaction.update(doc(db, 'salons', roomId, 'joueurs', sorcVictimDoc.id), { statut_joueur: 'mort' });
+             diedFromSorciere = true;
+          }
+        }
+
+        // Nettoyage variables de nuit
+        transaction.update(doc(db, 'salons', roomId), { 
+           statut: 'jour_vote',
+           morts_nuit: { loups: diedFromLoups ? salonData.victime_loups : null, sorciere: diedFromSorciere ? salonData.victime_sorciere : null }
+        });
+      });
+    } catch (e) { console.error(e); alert("Erreur résolution nuit"); }
+  };
+
+  const handleApplyDaySentence = async () => {
+    const votesCount = {};
+    joueurs.filter(j => j.statut_joueur !== 'mort' && j.vote_jour).forEach(j => {
+       votesCount[j.vote_jour] = (votesCount[j.vote_jour] || 0) + 1;
+    });
+    
+    if (Object.keys(votesCount).length === 0) return alert("Aucun vote n'a été enregistré.");
+    
+    let maxVotes = 0;
+    let condamneNom = null;
+    let tie = false;
+
+    for (const [nom, count] of Object.entries(votesCount)) {
+       if (count > maxVotes) { maxVotes = count; condamneNom = nom; tie = false; }
+       else if (count === maxVotes) { tie = true; }
+    }
+
+    if (tie || !condamneNom) {
+       alert("Égalité parfaite ou aucun condamné. Personne ne meurt.");
+       // Passer directement à la résolution sans tuer
+       try { await updateDoc(doc(db, 'salons', roomId), { statut: 'jour_resolution', condamne_jour: 'Personne (Égalité)' }); } catch(e){}
+       return;
+    }
+
+    const condamne = joueurs.find(j => j.nom === condamneNom);
+    if (!condamne) return;
+
+    if (condamne.role === 'illusionniste' && salonData.illusion_active) {
+       alert("🔮 C'était une illusion ! L'Illusionniste survit !");
+       try {
+         await updateDoc(doc(db, 'salons', roomId), { illusion_active: false, statut: 'jour_resolution', condamne_jour: condamneNom + ' (Sauvé par Illusion)' });
+       } catch(e) { console.error(e); }
+    } else {
+       if (window.confirm(`Voulez-vous vraiment condamner ${condamneNom} (${maxVotes} votes) ?`)) {
+          try {
+             await updateDoc(doc(db, 'salons', roomId, 'joueurs', condamne.id), { statut_joueur: 'mort' });
+             await updateDoc(doc(db, 'salons', roomId), { statut: 'jour_resolution', condamne_jour: condamneNom });
+          } catch(e) { console.error(e); }
        }
     }
+  };
+
+  const handleNextNight = async () => {
     try {
-      await updateDoc(doc(db, 'salons', roomId), {
-        statut: "en_cours"
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'salons', roomId), {
+         statut: 'nuit_salvateur',
+         victime_loups: null,
+         victime_sauvee: false,
+         victime_sorciere: null,
+         vote_loup_temporaire: null,
+         joueur_protege: null,
+         illusion_active: false,
+         condamne_jour: null,
+         morts_nuit: null
       });
-    } catch (e) {
-      console.error(e);
-      alert("Erreur lors du lancement");
-    }
+      joueurs.forEach(j => {
+         batch.update(doc(db, 'salons', roomId, 'joueurs', j.id), { a_vote: false, a_vote_sorciere: false, vote_jour: null });
+      });
+      await batch.commit();
+    } catch(e) { console.error(e); }
   };
 
   const handleResetGame = async () => {
     if (!window.confirm("Voulez-vous réinitialiser et redistribuer les cartes pour les joueurs connectés ?")) return;
-    
     try {
       const shuffled = shuffleArray([...salonData.roles_selectionnes]);
       const batch = writeBatch(db);
@@ -137,266 +223,271 @@ export default function MjDashboard() {
       batch.update(doc(db, 'salons', roomId), {
         statut: "en_attente",
         roles_melanges: shuffled,
-        roles_dispo_comedien: salonData.roles_dispo_comedien_init || []
+        roles_dispo_comedien: salonData.roles_dispo_comedien_init || [],
+        couple: [], victime_loups: null, victime_sauvee: false, victime_sorciere: null, vote_loup_temporaire: null, joueur_protege: null, illusion_active: false
       });
 
       joueurs.forEach(j => {
         batch.update(doc(db, 'salons', roomId, 'joueurs', j.id), {
-          carte_choisie: null,
-          role: "",
-          statut_joueur: "en_vie"
+          carte_choisie: null, role: "", statut_joueur: "en_vie", pouvoir_utilise: false, a_vote: false, a_vote_sorciere: false, vote_jour: null, illusion_dispo: true, dernier_protege: null
         });
       });
-
       await batch.commit();
-    } catch (e) {
-      console.error(e);
-      alert("Erreur lors de la réinitialisation");
-    }
+    } catch (e) { console.error(e); }
   };
 
-  const getPlayerUrl = () => {
-    return `${window.location.origin}/player/${roomId}`;
-  };
+  const getPlayerUrl = () => `${window.location.origin}/player/${roomId}`;
 
-  if (salonData) {
+  if (!salonData) {
+    // Configuration Phase
     return (
       <div className="dashboard-container">
         <ThemeToggle />
         <header className="dashboard-header">
           <div className="dashboard-title-box">
             <h1 className="title-font"><Eye size={28} style={{color: 'var(--primary)'}} /> LE CONSEIL DES LOUPS</h1>
-            <p className="text-font">Code du salon : <span className="room-id glow-text">{roomId}</span></p>
-          </div>
-          
-          <div style={{display: 'flex', gap: '10px', flexDirection: 'column'}}>
-             {salonData.statut === "en_attente" && (
-                <button onClick={handleStartGame} className="btn-primary title-font glow-button" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
-                  <Play size={18} /> Lancer la partie
-                </button>
-             )}
-             {salonData.statut === "en_cours" && (
-                <button onClick={() => updateDoc(doc(db, 'salons', roomId), { statut: 'nuit_loups' })} className="btn-primary title-font glow-button" style={{display: 'flex', gap: '8px', alignItems: 'center', background: '#ef4444', border: 'none'}}>
-                  🐺 Lancer la Nuit des Loups
-                </button>
-             )}
-             <button onClick={handleResetGame} className="btn-secondary text-font border-accent" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
-                <RefreshCw size={18} /> Réinitialiser
-             </button>
+            <p className="text-font">Nouveau salon : <span className="room-id glow-text">{roomId}</span></p>
           </div>
         </header>
 
-        {salonData.statut === 'nuit_loups' && (
-          <div className="glass-panel" style={{marginTop: '2rem', border: '2px solid #ef4444', background: 'rgba(239, 68, 68, 0.05)'}}>
-            <h2 className="title-font" style={{color: '#ef4444', display: 'flex', alignItems: 'center', gap: '8px'}}>🐺 Phase : Nuit des Loups-Garous</h2>
-            
-            <div style={{marginTop: '1rem', marginBottom: '1.5rem'}}>
-              {salonData.victime_loups ? (
-                 <p className="text-font text-danger" style={{fontWeight: 'bold', fontSize: '1.1rem'}}>✅ Choix validé : Les loups vont dévorer {salonData.victime_loups} !</p>
-              ) : salonData.vote_loup_temporaire ? (
-                 <p className="text-font" style={{color: '#fca5a5', fontSize: '1.1rem'}}>⏳ Les loups ciblent actuellement : <strong>{salonData.vote_loup_temporaire}</strong>...</p>
-              ) : (
-                 <p className="text-font text-muted" style={{fontStyle: 'italic'}}>Les loups se concertent et choisissent leur cible...</p>
-              )}
-            </div>
-
-            {salonData.victime_loups && (
-              <button 
-                onClick={async () => {
-                  try {
-                    await updateDoc(doc(db, 'salons', roomId), { statut: 'nuit_sorciere' });
-                  } catch(e) { console.error(e); alert('Erreur'); }
-                }}
-                className="btn-primary title-font glow-button"
-                style={{background: '#8b5cf6', border: 'none', width: '100%', fontSize: '1.2rem', padding: '15px'}}
-              >
-                🧙‍♂️ Passer au tour de la Sorcière
-              </button>
-            )}
-          </div>
-        )}
-
-        <div className="mj-content-grid" style={{display: 'grid', gridTemplateColumns: joueurs.length >= salonData.roles_selectionnes.length ? '1fr' : '1fr 1fr', gap: '2rem', marginTop: '2rem'}}>
-           {joueurs.length < salonData.roles_selectionnes.length && (
-             <div className="qr-panel glass-panel">
-               <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><LinkIcon size={20} /> Rejoindre le salon</h2>
-               <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Les joueurs doivent scanner ce code ou utiliser le lien pour rejoindre la partie.</p>
-               <div className="qr-wrapper" style={{background: 'white', padding: '15px', borderRadius: '15px', display: 'inline-block'}}>
-                 <QRCodeSVG 
-                   value={getPlayerUrl()} 
-                   size={200}
-                   bgColor={"#ffffff"} fgColor={"#000000"} level={"H"} includeMargin={false}
-                 />
-               </div>
-               <div className="qr-url text-font" style={{marginTop: '1rem', wordBreak: 'break-all'}}>{getPlayerUrl()}</div>
+        <div className="config-box glass-panel">
+          <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><Settings size={22} style={{color: 'var(--primary)'}} /> Configuration de la partie</h2>
+          
+          <div style={{marginBottom: '1.5rem', background: 'var(--input-bg)', padding: '1rem', borderRadius: '12px'}}>
+             <h3 className="title-font" style={{fontSize: '1.1rem', marginBottom: '10px'}}>Mode de distribution</h3>
+             <div style={{display: 'flex', gap: '10px'}}>
+               <button onClick={() => setDistributionMode('aleatoire')} className={`btn-secondary text-font ${distributionMode === 'aleatoire' ? 'glow-button' : ''}`} style={{flex: 1, borderColor: distributionMode === 'aleatoire' ? 'var(--primary)' : ''}}>🎲 Aléatoire</button>
+               <button onClick={() => setDistributionMode('manuelle')} className={`btn-secondary text-font ${distributionMode === 'manuelle' ? 'glow-button' : ''}`} style={{flex: 1, borderColor: distributionMode === 'manuelle' ? 'var(--primary)' : ''}}>✍️ Manuelle</button>
              </div>
-           )}
+          </div>
 
-           <div className="players-table-panel glass-panel">
-              <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><Users size={20} /> Joueurs connectés ({joueurs.length})</h2>
-              {joueurs.length === 0 ? (
-                 <p className="text-font text-muted" style={{fontStyle: 'italic', marginTop: '1rem'}}>En attente de joueurs...</p>
-              ) : (
-                 <div style={{marginTop: '1rem', overflowX: 'auto'}}>
-                    <table style={{width: '100%', textAlign: 'left', borderCollapse: 'collapse'}} className="text-font">
-                       <thead>
-                          <tr style={{borderBottom: '1px solid var(--card-border)'}}>
-                             <th style={{padding: '10px 5px'}}>Nom</th>
-                             <th style={{padding: '10px 5px'}}>Carte</th>
-                             <th style={{padding: '10px 5px'}}>Rôle</th>
-                             <th style={{padding: '10px 5px'}}>Statut</th>
-                          </tr>
-                       </thead>
-                       <tbody>
-                           {joueurs.map(j => {
-                              const roleObj = j.role ? rolesData.find(r => r.id === j.role) : null;
-                              const enCouple = j.statut_joueur === 'En couple';
-                              return (
-                                 <tr key={j.id} style={{borderBottom: '1px solid var(--card-border)', opacity: j.statut_joueur === 'mort' ? 0.5 : 1, background: enCouple ? 'rgba(236,72,153,0.1)' : 'transparent'}}>
-                                    <td style={{padding: '10px 5px', fontWeight: 'bold'}}>
-                                      {j.nom}
-                                      {enCouple && <span style={{marginLeft: '6px', fontSize: '0.75rem', background: '#ec4899', color: '#fff', borderRadius: '999px', padding: '2px 8px', fontWeight: 'bold'}}>💖 Couple</span>}
-                                    </td>
-                                    <td style={{padding: '10px 5px'}}>{j.carte_choisie !== null ? j.carte_choisie + 1 : '-'}</td>
-                                    <td style={{padding: '10px 5px'}}>
-                                       {roleObj ? <span style={{color: roleObj.color, fontWeight: 'bold'}}>{roleObj.name}</span> : <span className="text-muted">Caché</span>}
-                                    </td>
-                                    <td style={{padding: '10px 5px'}}>
-                                      <select
-                                        value={j.statut_joueur || 'en_vie'}
-                                        onChange={async (e) => {
-                                          try {
-                                            await updateDoc(doc(db, 'salons', roomId, 'joueurs', j.id), {
-                                              statut_joueur: e.target.value
-                                            });
-                                          } catch (err) {
-                                            console.error('Erreur mise à jour statut:', err);
-                                          }
-                                        }}
-                                        style={{
-                                          background: 'var(--input-bg)',
-                                          color: j.statut_joueur === 'mort' ? 'var(--danger)'
-                                              : j.statut_joueur === 'infecte' ? '#a855f7'
-                                              : enCouple ? '#ec4899'
-                                              : 'var(--success)',
-                                          border: enCouple ? '1px solid #ec4899' : '1px solid var(--card-border)',
-                                          borderRadius: '6px',
-                                          padding: '4px 8px',
-                                          fontSize: '0.85rem',
-                                          fontWeight: 'bold',
-                                          cursor: 'pointer'
-                                        }}
-                                      >
-                                        <option value="en_vie">En vie</option>
-                                        <option value="mort">Mort</option>
-                                        <option value="infecte">Infecté</option>
-                                        <option value="En couple">En couple</option>
-                                      </select>
-                                    </td>
-                                 </tr>
-                              );
-                           })}
-                       </tbody>
-                    </table>
-                 </div>
-              )}
-           </div>
+          <div style={{marginBottom: '2rem', borderTop: '1px solid var(--card-border)', paddingTop: '1.5rem'}}>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+              <h3 className="title-font" style={{fontSize: '1.2rem'}}>Sélection des rôles</h3>
+              <div className="role-counter text-font text-success" style={{fontWeight: 'bold', padding: '0.3rem 0.8rem', background: 'var(--input-bg)', borderRadius: '1rem'}}>
+                {selectedRoles.length} sélectionnés
+              </div>
+            </div>
+            <div className="roles-grid">
+              {rolesData.map(role => {
+                const count = selectedRoles.filter(id => id === role.id).length;
+                return (
+                  <div key={role.id} className="role-selector-item glass-panel">
+                    <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1}}>
+                      <div className="role-color-dot" style={{backgroundColor: role.color}}></div>
+                      <span className="text-font" style={{fontSize: '0.85rem', fontWeight: '600'}}>{role.name}</span>
+                    </div>
+                    <div className="role-counter-controls">
+                      <button onClick={() => removeRole(role.id)} disabled={count === 0} className="role-btn">-</button>
+                      <span className="role-count text-font">{count}</span>
+                      <button onClick={() => addRole(role.id)} className="role-btn">+</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <button onClick={handleOpenSalon} disabled={isGenerating || selectedRoles.length < 3} className="btn-primary title-font glow-button" style={{display: 'flex', justifyContent: 'center', gap: '10px', width: '100%'}}>
+            {isGenerating ? <RefreshCw className="spinner" size={20} /> : <Users size={20} />}
+            Ouvrir le salon
+          </button>
         </div>
       </div>
     );
   }
 
-  // Configuration Phase
+  // MJ Control Panel (Game in progress)
+  const isPhase = (p) => salonData.statut === p;
+
   return (
     <div className="dashboard-container">
       <ThemeToggle />
       <header className="dashboard-header">
         <div className="dashboard-title-box">
           <h1 className="title-font"><Eye size={28} style={{color: 'var(--primary)'}} /> LE CONSEIL DES LOUPS</h1>
-          <p className="text-font">Nouveau salon : <span className="room-id glow-text">{roomId}</span></p>
+          <p className="text-font">Code du salon : <span className="room-id glow-text">{roomId}</span> | Phase : <strong style={{color: 'var(--primary)'}}>{salonData.statut.replace('_', ' ').toUpperCase()}</strong></p>
+        </div>
+        <div style={{display: 'flex', gap: '10px', flexDirection: 'column'}}>
+           <button onClick={handleResetGame} className="btn-secondary text-font border-accent" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+              <RefreshCw size={18} /> Réinitialiser
+           </button>
         </div>
       </header>
 
-      <div className="config-box glass-panel">
-        <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><Settings size={22} style={{color: 'var(--primary)'}} /> Configuration de la partie</h2>
+      {/* PANNEAU DE CONTRÔLE DES PHASES */}
+      <div className="glass-panel" style={{marginTop: '2rem', border: '2px solid var(--primary)', background: 'var(--bg-color)'}}>
+        <h2 className="title-font" style={{marginBottom: '1rem', color: 'var(--primary)'}}>🕹️ CONTRÔLE DE LA PARTIE</h2>
         
-        <div style={{marginBottom: '2rem', borderTop: '1px solid var(--card-border)', paddingTop: '1.5rem'}}>
-          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-            <h3 className="title-font" style={{fontSize: '1.2rem', color: 'var(--text-color)'}}>1. Sélection des rôles</h3>
-            <div className={`role-counter text-font text-success`} style={{fontWeight: 'bold', padding: '0.3rem 0.8rem', background: 'var(--input-bg)', borderRadius: '1rem'}}>
-              {selectedRoles.length} sélectionnés
-            </div>
-          </div>
-          <p className="text-font" style={{fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem'}}>
-             Ajoutez les rôles qui seront présents dans la partie. Le nombre de rôles correspondra au nombre de joueurs max.
-          </p>
-          
-          <div className="roles-grid">
-            {rolesData.map(role => {
-              const count = selectedRoles.filter(id => id === role.id).length;
-              return (
-                <div key={role.id} className="role-selector-item glass-panel">
-                  <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1}}>
-                    <div className="role-color-dot" style={{backgroundColor: role.color}}></div>
-                    <span className="text-font" style={{fontSize: '0.85rem', fontWeight: '600'}}>{role.name}</span>
-                  </div>
-                  <div className="role-counter-controls">
-                    <button onClick={() => removeRole(role.id)} disabled={count === 0} className="role-btn">-</button>
-                    <span className="role-count text-font">{count}</span>
-                    <button onClick={() => addRole(role.id)} className="role-btn">+</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {selectedRoles.length > 0 && (
-            <button onClick={() => setSelectedRoles([])} className="btn-secondary text-font" style={{marginTop: '1rem', width: '100%', justifyContent: 'center'}}>
-              Vider la sélection
-            </button>
-          )}
-        </div>
-
-        {hasComedien && (
-           <div style={{marginBottom: '2rem', borderTop: '1px solid var(--card-border)', paddingTop: '1.5rem', background: 'rgba(251, 191, 36, 0.05)', borderRadius: '10px', padding: '1rem'}}>
-             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-               <h3 className="title-font" style={{fontSize: '1.2rem', color: '#fbbf24'}}>2. Rôles pour le Comédien</h3>
-               <div className={`role-counter text-font ${comedienRoles.length !== 3 ? 'text-danger' : 'text-success'}`} style={{fontWeight: 'bold', padding: '0.3rem 0.8rem', background: 'var(--input-bg)', borderRadius: '1rem'}}>
-                 {comedienRoles.length} / 3
-               </div>
-             </div>
-             <p className="text-font" style={{fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem'}}>
-                Le Comédien a été sélectionné. Vous devez obligatoirement choisir 3 rôles supplémentaires dans lesquels il pourra piocher.
-             </p>
-             <div className="roles-grid">
-               {rolesData.map(role => {
-                 const count = comedienRoles.filter(id => id === role.id).length;
-                 return (
-                   <div key={`com-${role.id}`} className="role-selector-item glass-panel" style={{borderColor: count > 0 ? '#fbbf24' : ''}}>
-                     <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1}}>
-                       <div className="role-color-dot" style={{backgroundColor: role.color}}></div>
-                       <span className="text-font" style={{fontSize: '0.85rem', fontWeight: '600'}}>{role.name}</span>
-                     </div>
-                     <div className="role-counter-controls">
-                       <button onClick={() => removeComedienRole(role.id)} disabled={count === 0} className="role-btn">-</button>
-                       <span className="role-count text-font">{count}</span>
-                       <button onClick={() => addComedienRole(role.id)} disabled={comedienRoles.length >= 3} className="role-btn">+</button>
-                     </div>
-                   </div>
-                 );
-               })}
-             </div>
+        {isPhase('en_attente') && (
+           <div>
+             <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Les joueurs rejoignent le salon. Une fois tout le monde prêt et les rôles distribués, lancez la partie.</p>
+             <button onClick={handleStartGame} className="btn-primary title-font glow-button" style={{width: '100%', padding: '15px', fontSize: '1.2rem'}}><Play size={20}/> LANCER LA PARTIE (NUIT CUPIDON)</button>
            </div>
         )}
 
-        <button onClick={handleOpenSalon} disabled={isGenerating || selectedRoles.length < 3 || (hasComedien && comedienRoles.length !== 3)} className="btn-primary title-font glow-button" style={{display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '1rem'}}>
-          {isGenerating ? <RefreshCw className="spinner" style={{width: 20, height: 20, borderTopColor: 'white'}} /> : <Users size={20} />}
-          {isGenerating ? "Génération..." : "Ouvrir le salon"}
-        </button>
+        {isPhase('nuit_cupidon') && (
+          <div>
+            <p className="text-font" style={{color: '#ec4899'}}>💖 C'est la nuit de Cupidon. S'il est en jeu, il doit désigner deux amoureux.</p>
+            <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Amoureux actuels : {salonData.couple?.length === 2 ? `Choisis` : 'En attente...'}</p>
+            <button onClick={() => changePhase('nuit_voleur')} className="btn-primary title-font glow-button" style={{background: '#ec4899', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Passer au Voleur ➔</button>
+          </div>
+        )}
+
+        {isPhase('nuit_voleur') && (
+          <div>
+            <p className="text-font text-muted" style={{marginBottom: '1rem'}}>🕵️ Le Voleur peut échanger sa carte avec un autre joueur ou passer son tour.</p>
+            <button onClick={() => changePhase('nuit_salvateur')} className="btn-primary title-font glow-button" style={{width: '100%', padding: '15px', fontSize: '1.2rem'}}>Passer au Salvateur ➔</button>
+          </div>
+        )}
+
+        {isPhase('nuit_salvateur') && (
+          <div>
+            <p className="text-font" style={{color: '#3b82f6'}}>🛡️ Le Salvateur choisit un joueur à protéger des loups.</p>
+            <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Joueur protégé ce tour : <strong>{salonData.joueur_protege || 'Aucun'}</strong></p>
+            <button onClick={() => changePhase('nuit_voyante')} className="btn-primary title-font glow-button" style={{background: '#3b82f6', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Passer à la Voyante ➔</button>
+          </div>
+        )}
+
+        {isPhase('nuit_voyante') && (
+          <div>
+            <p className="text-font" style={{color: '#8b5cf6'}}>👁️ La Voyante observe la carte d'un joueur.</p>
+            <button onClick={() => changePhase('nuit_loups')} className="btn-primary title-font glow-button" style={{background: '#8b5cf6', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Passer aux Loups-Garous ➔</button>
+          </div>
+        )}
+
+        {isPhase('nuit_loups') && (
+          <div>
+            <p className="text-font" style={{color: '#ef4444'}}>🐺 Les loups choisissent leur victime.</p>
+            <div style={{background: 'rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: '8px', margin: '1rem 0'}}>
+              <p className="text-font">Cible temporaire : <strong>{salonData.vote_loup_temporaire || '-'}</strong></p>
+              <p className="text-font">Choix final : <strong>{salonData.victime_loups || 'En attente...'}</strong></p>
+            </div>
+            <button onClick={() => changePhase('nuit_sorciere')} className="btn-primary title-font glow-button" style={{background: '#ef4444', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Passer à la Sorcière ➔</button>
+          </div>
+        )}
+
+        {isPhase('nuit_sorciere') && (() => {
+          const sorciere = joueurs.find(j => j.role === 'sorciere' && j.statut_joueur !== 'mort');
+          return (
+            <div>
+              <p className="text-font" style={{color: '#c4b5fd'}}>🧙‍♀️ La sorcière utilise ses potions.</p>
+              {!sorciere ? (
+                <p className="text-font text-muted" style={{fontStyle: 'italic', margin: '1rem 0'}}>Pas de sorcière en vie.</p>
+              ) : (
+                <p className="text-font" style={{margin: '1rem 0', fontWeight: 'bold', color: sorciere.a_vote_sorciere ? '#10b981' : '#f59e0b'}}>{sorciere.a_vote_sorciere ? '✅ A terminé' : '⏳ En train de réfléchir'}</p>
+              )}
+              <button onClick={() => changePhase('matin')} className="btn-primary title-font glow-button" style={{background: '#c4b5fd', color: '#000', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Passer au MATIN ➔</button>
+            </div>
+          );
+        })()}
+
+        {isPhase('matin') && (
+          <div>
+            <p className="text-font text-warning" style={{marginBottom: '1rem'}}>☀️ Le village se réveille. Le MJ doit appliquer les sentences de la nuit.</p>
+            <ul className="text-font" style={{background: 'var(--input-bg)', padding: '1rem 2rem', borderRadius: '8px', marginBottom: '1rem'}}>
+              <li>Cible des loups : <strong>{salonData.victime_loups || 'Personne'}</strong></li>
+              <li>Salvateur a protégé : <strong>{salonData.joueur_protege || 'Personne'}</strong></li>
+              <li>Sorcière a sauvé : <strong>{salonData.victime_sauvee ? 'OUI' : 'NON'}</strong></li>
+              <li>Sorcière a tué : <strong>{salonData.victime_sorciere || 'Personne'}</strong></li>
+            </ul>
+            <button onClick={handleApplyNightDeaths} className="btn-primary title-font glow-button" style={{background: '#f59e0b', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Appliquer les morts et passer au Vote ➔</button>
+          </div>
+        )}
+
+        {isPhase('jour_vote') && (() => {
+           const votesCount = {};
+           joueurs.filter(j => j.statut_joueur !== 'mort' && j.vote_jour).forEach(j => {
+              votesCount[j.vote_jour] = (votesCount[j.vote_jour] || 0) + 1;
+           });
+           return (
+              <div>
+                <p className="text-font" style={{marginBottom: '1rem'}}>☀️ Le village débat et vote pour éliminer un suspect.</p>
+                {salonData.illusion_active && <div style={{background: '#8b5cf6', color: 'white', padding: '10px', borderRadius: '8px', marginBottom: '1rem', fontWeight: 'bold'}}>✨ L'Illusionniste a activé son pouvoir !</div>}
+                <div style={{background: 'var(--input-bg)', padding: '1rem', borderRadius: '8px', marginBottom: '1rem'}}>
+                  <h4 className="title-font" style={{marginBottom: '10px'}}>Urne en temps réel :</h4>
+                  {Object.entries(votesCount).length === 0 ? <p className="text-muted text-font">Aucun vote.</p> : (
+                    <ul style={{listStyle: 'none', padding: 0}} className="text-font">
+                      {Object.entries(votesCount).sort((a,b)=>b[1]-a[1]).map(([nom, count]) => (
+                        <li key={nom} style={{display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid var(--card-border)'}}>
+                           <span>{nom}</span> <strong>{count} voix</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <button onClick={handleApplyDaySentence} className="btn-primary title-font glow-button" style={{background: '#ef4444', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Figer le Vote et Appliquer la Sentence 🔨</button>
+              </div>
+           );
+        })()}
+
+        {isPhase('jour_resolution') && (
+           <div>
+             <h3 className="title-font" style={{color: 'var(--success)', marginBottom: '1rem'}}>Sentence appliquée. ({salonData.condamne_jour})</h3>
+             <button onClick={handleNextNight} className="btn-primary title-font glow-button" style={{background: '#1d4ed8', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>🌙 Lancer la Nuit Suivante (Salvateur) ➔</button>
+           </div>
+        )}
       </div>
 
-      <footer className="author-signature text-font">
-        Fait par KOBCODE (Koby YZD)
-      </footer>
+      <div className="mj-content-grid" style={{display: 'grid', gridTemplateColumns: joueurs.length >= salonData.roles_selectionnes.length ? '1fr' : '1fr 1fr', gap: '2rem', marginTop: '2rem'}}>
+         {joueurs.length < salonData.roles_selectionnes.length && (
+           <div className="qr-panel glass-panel">
+             <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><LinkIcon size={20} /> Rejoindre le salon</h2>
+             <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Scannez ce code pour rejoindre. {joueurs.length}/{salonData.roles_selectionnes.length} joueurs.</p>
+             <div className="qr-wrapper" style={{background: 'white', padding: '15px', borderRadius: '15px', display: 'inline-block'}}>
+               <QRCodeSVG value={getPlayerUrl()} size={200} bgColor={"#ffffff"} fgColor={"#000000"} level={"H"} includeMargin={false} />
+             </div>
+             <div className="qr-url text-font" style={{marginTop: '1rem', wordBreak: 'break-all'}}>{getPlayerUrl()}</div>
+           </div>
+         )}
+
+         <div className="players-table-panel glass-panel" style={{gridColumn: joueurs.length >= salonData.roles_selectionnes.length ? '1 / -1' : 'auto'}}>
+            <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><Users size={20} /> Joueurs connectés ({joueurs.length})</h2>
+            <div style={{marginTop: '1rem', overflowX: 'auto'}}>
+               <table style={{width: '100%', textAlign: 'left', borderCollapse: 'collapse'}} className="text-font">
+                  <thead>
+                     <tr style={{borderBottom: '1px solid var(--card-border)'}}>
+                        <th style={{padding: '10px 5px'}}>Nom</th>
+                        <th style={{padding: '10px 5px'}}>Statut</th>
+                        <th style={{padding: '10px 5px'}}>Rôle</th>
+                     </tr>
+                  </thead>
+                  <tbody>
+                      {joueurs.map(j => {
+                         const roleObj = j.role ? rolesData.find(r => r.id === j.role) : null;
+                         return (
+                            <tr key={j.id} style={{borderBottom: '1px solid var(--card-border)', opacity: j.statut_joueur === 'mort' ? 0.5 : 1}}>
+                               <td style={{padding: '10px 5px', fontWeight: 'bold'}}>{j.nom}</td>
+                               <td style={{padding: '10px 5px'}}>
+                                 <select
+                                   value={j.statut_joueur || 'en_vie'}
+                                   onChange={(e) => updateDoc(doc(db, 'salons', roomId, 'joueurs', j.id), { statut_joueur: e.target.value })}
+                                   style={{ background: 'var(--input-bg)', color: j.statut_joueur==='mort'?'var(--danger)':'var(--success)', border: '1px solid var(--card-border)', borderRadius: '6px', padding: '4px', fontWeight: 'bold' }}
+                                 >
+                                   <option value="en_vie">En vie</option>
+                                   <option value="mort">Mort</option>
+                                   <option value="infecte">Infecté</option>
+                                   <option value="En couple">En couple</option>
+                                 </select>
+                               </td>
+                               <td style={{padding: '10px 5px'}}>
+                                  {salonData.statut === 'en_attente' && salonData.distribution_mode === 'manuelle' ? (
+                                    <select value={j.role || ''} onChange={(e) => assignRoleManually(j.id, e.target.value)} style={{background: 'var(--input-bg)', color: 'var(--text-color)', padding: '5px', borderRadius: '5px', border: '1px solid var(--card-border)'}}>
+                                      <option value="">Sélectionner...</option>
+                                      {rolesData.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                    </select>
+                                  ) : (
+                                    <span style={{color: roleObj?.color || 'var(--text-color)', fontWeight: 'bold'}}>{roleObj?.name || 'Caché'}</span>
+                                  )}
+                               </td>
+                            </tr>
+                         );
+                      })}
+                  </tbody>
+               </table>
+            </div>
+         </div>
+      </div>
     </div>
   );
 }
