@@ -413,6 +413,9 @@ export default function PlayerScreen() {
   const voleurTargets = joueurs.filter(j => j.id !== me.id && j.role && j.statut_joueur !== "mort");
   const allAlivePlayers = joueurs.filter(j => j.statut_joueur !== "mort");
 
+  const isMeLoup = me.role?.toLowerCase().includes('loup') || me.statut_joueur === 'infecte';
+  const loupTargets = allAlivePlayers.filter(j => !(j.role?.toLowerCase().includes('loup') || j.statut_joueur === 'infecte'));
+
 
   return (
     <div className="player-screen">
@@ -502,6 +505,71 @@ export default function PlayerScreen() {
                  >
                     ✨ Activer le pouvoir de Cupidon
                  </button>
+              )}
+
+              {/* LOUPS-GAROUS */}
+              {salonData.statut === 'nuit_loups' && isMeLoup && !me.a_vote && (
+                 <div style={{marginBottom: '1rem', padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '12px'}}>
+                   <h3 className="title-font" style={{color: '#ef4444', marginBottom: '0.5rem'}}>🐺 Tour des Loups</h3>
+                   <p className="text-font text-muted" style={{fontSize: '0.85rem', marginBottom: '1rem'}}>
+                     Choisissez votre victime collectivement.
+                   </p>
+                   <ul style={{listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                     {loupTargets.map(j => {
+                       const isSelected = salonData.vote_loup_temporaire === j.nom;
+                       return (
+                         <li key={j.id}
+                           onClick={() => {
+                             updateDoc(doc(db, 'salons', roomId), { vote_loup_temporaire: j.nom }).catch(console.error);
+                           }}
+                           style={{
+                             padding: '12px 14px',
+                             borderRadius: '8px',
+                             cursor: 'pointer',
+                             display: 'flex',
+                             alignItems: 'center',
+                             gap: '10px',
+                             transition: 'all 0.2s',
+                             backgroundColor: isSelected ? '#ef4444' : 'rgba(255,255,255,0.05)',
+                             fontWeight: isSelected ? 'bold' : 'normal',
+                             color: isSelected ? '#fff' : 'var(--text-color)',
+                             border: isSelected ? '2px solid #b91c1c' : '2px solid transparent'
+                           }}
+                         >
+                           <span style={{fontSize: '1.2rem'}}>{isSelected ? '🩸' : '○'}</span>
+                           <span>{j.nom}</span>
+                         </li>
+                       );
+                     })}
+                   </ul>
+                   <div style={{marginTop: '1.2rem'}}>
+                     <button
+                       onClick={async () => {
+                         if (!salonData.vote_loup_temporaire) return;
+                         try {
+                           await runTransaction(db, async (transaction) => {
+                             transaction.update(doc(db, 'salons', roomId), { victime_loups: salonData.vote_loup_temporaire });
+                             transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), { a_vote: true });
+                           });
+                         } catch (err) {
+                           console.error('Erreur vote loups:', err);
+                           alert('Erreur lors du vote.');
+                         }
+                       }}
+                       disabled={!salonData.vote_loup_temporaire}
+                       className="btn-primary title-font glow-button"
+                       style={{width: '100%', background: salonData.vote_loup_temporaire ? '#ef4444' : 'rgba(100,100,100,0.3)', border: 'none', opacity: salonData.vote_loup_temporaire ? 1 : 0.5}}
+                     >
+                       🐺 Confirmer le festin
+                     </button>
+                   </div>
+                 </div>
+              )}
+              {salonData.statut === 'nuit_loups' && isMeLoup && me.a_vote && (
+                 <div style={{marginBottom: '1rem', padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '12px', textAlign: 'center'}}>
+                   <h3 className="title-font" style={{color: '#ef4444', marginBottom: '0.5rem'}}>🐺 Vote confirmé</h3>
+                   <p className="text-font text-muted">Vous avez choisi de dévorer <strong>{salonData.victime_loups}</strong>. Attendez la fin de la nuit.</p>
+                 </div>
               )}
            </div>
         )}

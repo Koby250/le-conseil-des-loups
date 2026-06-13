@@ -175,11 +175,46 @@ export default function MjDashboard() {
                   <Play size={18} /> Lancer la partie
                 </button>
              )}
+             {salonData.statut === "en_cours" && (
+                <button onClick={() => updateDoc(doc(db, 'salons', roomId), { statut: 'nuit_loups' })} className="btn-primary title-font glow-button" style={{display: 'flex', gap: '8px', alignItems: 'center', background: '#ef4444', border: 'none'}}>
+                  🐺 Lancer la Nuit des Loups
+                </button>
+             )}
              <button onClick={handleResetGame} className="btn-secondary text-font border-accent" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
                 <RefreshCw size={18} /> Réinitialiser
              </button>
           </div>
         </header>
+
+        {salonData.statut === 'nuit_loups' && (
+          <div className="glass-panel" style={{marginTop: '2rem', border: '2px solid #ef4444', background: 'rgba(239, 68, 68, 0.05)'}}>
+            <h2 className="title-font" style={{color: '#ef4444', display: 'flex', alignItems: 'center', gap: '8px'}}>🐺 Phase : Nuit des Loups-Garous</h2>
+            
+            <div style={{marginTop: '1rem', marginBottom: '1.5rem'}}>
+              {salonData.victime_loups ? (
+                 <p className="text-font text-danger" style={{fontWeight: 'bold', fontSize: '1.1rem'}}>✅ Choix validé : Les loups vont dévorer {salonData.victime_loups} !</p>
+              ) : salonData.vote_loup_temporaire ? (
+                 <p className="text-font" style={{color: '#fca5a5', fontSize: '1.1rem'}}>⏳ Les loups ciblent actuellement : <strong>{salonData.vote_loup_temporaire}</strong>...</p>
+              ) : (
+                 <p className="text-font text-muted" style={{fontStyle: 'italic'}}>Les loups se concertent et choisissent leur cible...</p>
+              )}
+            </div>
+
+            {salonData.victime_loups && (
+              <button 
+                onClick={async () => {
+                  try {
+                    await updateDoc(doc(db, 'salons', roomId), { statut: 'nuit_sorciere' });
+                  } catch(e) { console.error(e); alert('Erreur'); }
+                }}
+                className="btn-primary title-font glow-button"
+                style={{background: '#8b5cf6', border: 'none', width: '100%', fontSize: '1.2rem', padding: '15px'}}
+              >
+                🧙‍♂️ Passer au tour de la Sorcière
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="mj-content-grid" style={{display: 'grid', gridTemplateColumns: joueurs.length >= salonData.roles_selectionnes.length ? '1fr' : '1fr 1fr', gap: '2rem', marginTop: '2rem'}}>
            {joueurs.length < salonData.roles_selectionnes.length && (
