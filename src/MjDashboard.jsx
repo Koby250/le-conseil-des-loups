@@ -5,7 +5,7 @@ import { collection, doc, setDoc, updateDoc, onSnapshot, writeBatch, runTransact
 
 import { db } from './firebase';
 import { rolesData } from './rolesData';
-import { Users, RefreshCw, Eye, Settings, Play, Link as LinkIcon } from 'lucide-react';
+import { Users, RefreshCw, Eye, Settings, Play, Link as LinkIcon, Info } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
 function shuffleArray(array) {
@@ -40,6 +40,23 @@ export default function MjDashboard() {
     });
     return () => { unsubSalon(); unsubJoueurs(); };
   }, [roomId]);
+
+  // Theme Management (Jour / Nuit)
+  useEffect(() => {
+    if (!salonData) return;
+    const nightPhases = ['nuit_cupidon', 'nuit_voleur', 'nuit_salvateur', 'nuit_voyante', 'nuit_loups', 'nuit_sorciere'];
+    const dayPhases = ['matin', 'jour_vote', 'jour_resolution'];
+    
+    if (nightPhases.includes(salonData.statut)) {
+      document.body.classList.add('theme-nuit');
+      document.body.classList.remove('theme-jour');
+    } else if (dayPhases.includes(salonData.statut)) {
+      document.body.classList.add('theme-jour');
+      document.body.classList.remove('theme-nuit');
+    } else {
+      document.body.classList.remove('theme-nuit', 'theme-jour'); // Reset if en_attente
+    }
+  }, [salonData?.statut]);
 
   // Config handlers
   const addRole = (roleId) => setSelectedRoles(prev => [...prev, roleId]);
@@ -275,11 +292,11 @@ export default function MjDashboard() {
                   <div key={role.id} className="role-selector-item glass-panel">
                     <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1}}>
                       <div className="role-color-dot" style={{backgroundColor: role.color}}></div>
-                      <span className="text-font" style={{fontSize: '0.85rem', fontWeight: '600'}}>{role.name}</span>
+                      <span className="text-font" style={{fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-color)'}}>{role.name}</span>
                     </div>
                     <div className="role-counter-controls">
                       <button onClick={() => removeRole(role.id)} disabled={count === 0} className="role-btn">-</button>
-                      <span className="role-count text-font">{count}</span>
+                      <span className="role-count text-font" style={{color: 'var(--text-color)'}}>{count}</span>
                       <button onClick={() => addRole(role.id)} className="role-btn">+</button>
                     </div>
                   </div>
@@ -299,6 +316,8 @@ export default function MjDashboard() {
 
   // MJ Control Panel (Game in progress)
   const isPhase = (p) => salonData.statut === p;
+  const isGameRunning = salonData.statut !== 'en_attente';
+  const displayFormat = isGameRunning ? '1fr' : (joueurs.length >= salonData.roles_selectionnes.length ? '1fr' : '1fr 1fr');
 
   return (
     <div className="dashboard-container">
@@ -316,7 +335,7 @@ export default function MjDashboard() {
       </header>
 
       {/* PANNEAU DE CONTRÔLE DES PHASES */}
-      <div className="glass-panel" style={{marginTop: '2rem', border: '2px solid var(--primary)', background: 'var(--bg-color)'}}>
+      <div className="glass-panel" style={{marginTop: '2rem', border: '2px solid var(--primary)', background: 'var(--bg-color)', borderRadius: '1.5rem', padding: '2rem'}}>
         <h2 className="title-font" style={{marginBottom: '1rem', color: 'var(--primary)'}}>🕹️ CONTRÔLE DE LA PARTIE</h2>
         
         {isPhase('en_attente') && (
@@ -328,40 +347,40 @@ export default function MjDashboard() {
 
         {isPhase('nuit_cupidon') && (
           <div>
-            <p className="text-font" style={{color: '#ec4899'}}>💖 C'est la nuit de Cupidon. S'il est en jeu, il doit désigner deux amoureux.</p>
-            <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Amoureux actuels : {salonData.couple?.length === 2 ? `Choisis` : 'En attente...'}</p>
+            <p className="text-font" style={{color: '#ec4899', fontSize: '1.1rem'}}>💖 C'est la nuit de Cupidon. S'il est en jeu, il doit désigner deux amoureux.</p>
+            <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Amoureux actuels : {salonData.couple?.length === 2 ? `Choisis` : 'En attente...'}</p>
             <button onClick={() => changePhase('nuit_voleur')} className="btn-primary title-font glow-button" style={{background: '#ec4899', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Passer au Voleur ➔</button>
           </div>
         )}
 
         {isPhase('nuit_voleur') && (
           <div>
-            <p className="text-font text-muted" style={{marginBottom: '1rem'}}>🕵️ Le Voleur peut échanger sa carte avec un autre joueur ou passer son tour.</p>
+            <p className="text-font text-muted" style={{marginBottom: '1.5rem', fontSize: '1.1rem'}}>🕵️ Le Voleur peut échanger sa carte avec un autre joueur ou passer son tour.</p>
             <button onClick={() => changePhase('nuit_salvateur')} className="btn-primary title-font glow-button" style={{width: '100%', padding: '15px', fontSize: '1.2rem'}}>Passer au Salvateur ➔</button>
           </div>
         )}
 
         {isPhase('nuit_salvateur') && (
           <div>
-            <p className="text-font" style={{color: '#3b82f6'}}>🛡️ Le Salvateur choisit un joueur à protéger des loups.</p>
-            <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Joueur protégé ce tour : <strong>{salonData.joueur_protege || 'Aucun'}</strong></p>
+            <p className="text-font" style={{color: '#3b82f6', fontSize: '1.1rem'}}>🛡️ Le Salvateur choisit un joueur à protéger des loups.</p>
+            <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Joueur protégé ce tour : <strong>{salonData.joueur_protege || 'Aucun'}</strong></p>
             <button onClick={() => changePhase('nuit_voyante')} className="btn-primary title-font glow-button" style={{background: '#3b82f6', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Passer à la Voyante ➔</button>
           </div>
         )}
 
         {isPhase('nuit_voyante') && (
           <div>
-            <p className="text-font" style={{color: '#8b5cf6'}}>👁️ La Voyante observe la carte d'un joueur.</p>
+            <p className="text-font" style={{color: '#8b5cf6', fontSize: '1.1rem', marginBottom: '1.5rem'}}>👁️ La Voyante observe la carte d'un joueur.</p>
             <button onClick={() => changePhase('nuit_loups')} className="btn-primary title-font glow-button" style={{background: '#8b5cf6', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Passer aux Loups-Garous ➔</button>
           </div>
         )}
 
         {isPhase('nuit_loups') && (
           <div>
-            <p className="text-font" style={{color: '#ef4444'}}>🐺 Les loups choisissent leur victime.</p>
+            <p className="text-font" style={{color: '#ef4444', fontSize: '1.1rem'}}>🐺 Les loups choisissent leur victime.</p>
             <div style={{background: 'rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: '8px', margin: '1rem 0'}}>
-              <p className="text-font">Cible temporaire : <strong>{salonData.vote_loup_temporaire || '-'}</strong></p>
-              <p className="text-font">Choix final : <strong>{salonData.victime_loups || 'En attente...'}</strong></p>
+              <p className="text-font">Cible temporaire : <strong style={{color: 'var(--text-color)'}}>{salonData.vote_loup_temporaire || '-'}</strong></p>
+              <p className="text-font">Choix final : <strong style={{color: 'var(--text-color)'}}>{salonData.victime_loups || 'En attente...'}</strong></p>
             </div>
             <button onClick={() => changePhase('nuit_sorciere')} className="btn-primary title-font glow-button" style={{background: '#ef4444', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Passer à la Sorcière ➔</button>
           </div>
@@ -371,7 +390,7 @@ export default function MjDashboard() {
           const sorciere = joueurs.find(j => j.role === 'sorciere' && j.statut_joueur !== 'mort');
           return (
             <div>
-              <p className="text-font" style={{color: '#c4b5fd'}}>🧙‍♀️ La sorcière utilise ses potions.</p>
+              <p className="text-font" style={{color: '#c4b5fd', fontSize: '1.1rem'}}>🧙‍♀️ La sorcière utilise ses potions.</p>
               {!sorciere ? (
                 <p className="text-font text-muted" style={{fontStyle: 'italic', margin: '1rem 0'}}>Pas de sorcière en vie.</p>
               ) : (
@@ -384,12 +403,12 @@ export default function MjDashboard() {
 
         {isPhase('matin') && (
           <div>
-            <p className="text-font text-warning" style={{marginBottom: '1rem'}}>☀️ Le village se réveille. Le MJ doit appliquer les sentences de la nuit.</p>
-            <ul className="text-font" style={{background: 'var(--input-bg)', padding: '1rem 2rem', borderRadius: '8px', marginBottom: '1rem'}}>
-              <li>Cible des loups : <strong>{salonData.victime_loups || 'Personne'}</strong></li>
-              <li>Salvateur a protégé : <strong>{salonData.joueur_protege || 'Personne'}</strong></li>
-              <li>Sorcière a sauvé : <strong>{salonData.victime_sauvee ? 'OUI' : 'NON'}</strong></li>
-              <li>Sorcière a tué : <strong>{salonData.victime_sorciere || 'Personne'}</strong></li>
+            <p className="text-font text-warning" style={{marginBottom: '1rem', fontSize: '1.1rem'}}>☀️ Le village se réveille. Le MJ doit appliquer les sentences de la nuit.</p>
+            <ul className="text-font" style={{background: 'var(--input-bg)', padding: '1.5rem', borderRadius: '12px', marginBottom: '1.5rem', color: 'var(--text-color)'}}>
+              <li>🐺 Cible des loups : <strong>{salonData.victime_loups || 'Personne'}</strong></li>
+              <li>🛡️ Salvateur a protégé : <strong>{salonData.joueur_protege || 'Personne'}</strong></li>
+              <li>🧪 Sorcière a sauvé : <strong>{salonData.victime_sauvee ? 'OUI' : 'NON'}</strong></li>
+              <li>💀 Sorcière a tué : <strong>{salonData.victime_sorciere || 'Personne'}</strong></li>
             </ul>
             <button onClick={handleApplyNightDeaths} className="btn-primary title-font glow-button" style={{background: '#f59e0b', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>Appliquer les morts et passer au Vote ➔</button>
           </div>
@@ -402,14 +421,14 @@ export default function MjDashboard() {
            });
            return (
               <div>
-                <p className="text-font" style={{marginBottom: '1rem'}}>☀️ Le village débat et vote pour éliminer un suspect.</p>
+                <p className="text-font" style={{marginBottom: '1rem', fontSize: '1.1rem'}}>☀️ Le village débat et vote pour éliminer un suspect.</p>
                 {salonData.illusion_active && <div style={{background: '#8b5cf6', color: 'white', padding: '10px', borderRadius: '8px', marginBottom: '1rem', fontWeight: 'bold'}}>✨ L'Illusionniste a activé son pouvoir !</div>}
                 <div style={{background: 'var(--input-bg)', padding: '1rem', borderRadius: '8px', marginBottom: '1rem'}}>
-                  <h4 className="title-font" style={{marginBottom: '10px'}}>Urne en temps réel :</h4>
+                  <h4 className="title-font" style={{marginBottom: '10px', color: 'var(--text-color)'}}>Urne en temps réel :</h4>
                   {Object.entries(votesCount).length === 0 ? <p className="text-muted text-font">Aucun vote.</p> : (
                     <ul style={{listStyle: 'none', padding: 0}} className="text-font">
                       {Object.entries(votesCount).sort((a,b)=>b[1]-a[1]).map(([nom, count]) => (
-                        <li key={nom} style={{display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid var(--card-border)'}}>
+                        <li key={nom} style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--card-border)', color: 'var(--text-color)'}}>
                            <span>{nom}</span> <strong>{count} voix</strong>
                         </li>
                       ))}
@@ -423,16 +442,17 @@ export default function MjDashboard() {
 
         {isPhase('jour_resolution') && (
            <div>
-             <h3 className="title-font" style={{color: 'var(--success)', marginBottom: '1rem'}}>Sentence appliquée. ({salonData.condamne_jour})</h3>
+             <h3 className="title-font" style={{color: 'var(--success)', marginBottom: '1.5rem', fontSize: '1.5rem'}}>Sentence appliquée. ({salonData.condamne_jour})</h3>
              <button onClick={handleNextNight} className="btn-primary title-font glow-button" style={{background: '#1d4ed8', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>🌙 Lancer la Nuit Suivante (Salvateur) ➔</button>
            </div>
         )}
       </div>
 
-      <div className="mj-content-grid" style={{display: 'grid', gridTemplateColumns: joueurs.length >= salonData.roles_selectionnes.length ? '1fr' : '1fr 1fr', gap: '2rem', marginTop: '2rem'}}>
-         {joueurs.length < salonData.roles_selectionnes.length && (
+      <div className="mj-content-grid" style={{display: 'grid', gridTemplateColumns: displayFormat, gap: '2rem', marginTop: '2rem'}}>
+         {/* HIDE QR CODE WHEN GAME IS RUNNING */}
+         {!isGameRunning && joueurs.length < salonData.roles_selectionnes.length && (
            <div className="qr-panel glass-panel">
-             <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><LinkIcon size={20} /> Rejoindre le salon</h2>
+             <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-color)'}}><LinkIcon size={20} /> Rejoindre le salon</h2>
              <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Scannez ce code pour rejoindre. {joueurs.length}/{salonData.roles_selectionnes.length} joueurs.</p>
              <div className="qr-wrapper" style={{background: 'white', padding: '15px', borderRadius: '15px', display: 'inline-block'}}>
                <QRCodeSVG value={getPlayerUrl()} size={200} bgColor={"#ffffff"} fgColor={"#000000"} level={"H"} includeMargin={false} />
@@ -440,16 +460,27 @@ export default function MjDashboard() {
              <div className="qr-url text-font" style={{marginTop: '1rem', wordBreak: 'break-all'}}>{getPlayerUrl()}</div>
            </div>
          )}
+         
+         {/* RESUME DE LA PHASE (Quand la partie est lancée et remplace le QR) */}
+         {isGameRunning && (
+           <div className="glass-panel" style={{display: 'flex', flexDirection: 'column', padding: '2rem'}}>
+             <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-color)', marginBottom: '1rem'}}><Info size={20} /> Guide pour le MJ</h2>
+             <p className="text-font text-muted" style={{lineHeight: 1.6}}>
+               Vous êtes en phase : <strong style={{color: 'var(--primary)'}}>{salonData.statut}</strong>.<br/><br/>
+               Demandez à tous les joueurs de regarder leur téléphone et de fermer les yeux si nécessaire. Appelez le rôle concerné et suivez les instructions à l'écran. 
+             </p>
+           </div>
+         )}
 
-         <div className="players-table-panel glass-panel" style={{gridColumn: joueurs.length >= salonData.roles_selectionnes.length ? '1 / -1' : 'auto'}}>
-            <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px'}}><Users size={20} /> Joueurs connectés ({joueurs.length})</h2>
+         <div className="players-table-panel glass-panel" style={{gridColumn: (!isGameRunning && joueurs.length < salonData.roles_selectionnes.length) ? 'auto' : '1 / -1'}}>
+            <h2 className="title-font" style={{display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-color)'}}><Users size={20} /> Joueurs ({joueurs.filter(j => j.statut_joueur !== 'mort').length} en vie / {joueurs.length} total)</h2>
             <div style={{marginTop: '1rem', overflowX: 'auto'}}>
                <table style={{width: '100%', textAlign: 'left', borderCollapse: 'collapse'}} className="text-font">
                   <thead>
                      <tr style={{borderBottom: '1px solid var(--card-border)'}}>
-                        <th style={{padding: '10px 5px'}}>Nom</th>
-                        <th style={{padding: '10px 5px'}}>Statut</th>
-                        <th style={{padding: '10px 5px'}}>Rôle</th>
+                        <th style={{padding: '10px 5px', color: 'var(--text-muted)'}}>Nom</th>
+                        <th style={{padding: '10px 5px', color: 'var(--text-muted)'}}>Statut</th>
+                        <th style={{padding: '10px 5px', color: 'var(--text-muted)'}}>Rôle</th>
                      </tr>
                   </thead>
                   <tbody>
@@ -457,7 +488,7 @@ export default function MjDashboard() {
                          const roleObj = j.role ? rolesData.find(r => r.id === j.role) : null;
                          return (
                             <tr key={j.id} style={{borderBottom: '1px solid var(--card-border)', opacity: j.statut_joueur === 'mort' ? 0.5 : 1}}>
-                               <td style={{padding: '10px 5px', fontWeight: 'bold'}}>{j.nom}</td>
+                               <td style={{padding: '10px 5px', fontWeight: 'bold', color: 'var(--text-color)'}}>{j.nom}</td>
                                <td style={{padding: '10px 5px'}}>
                                  <select
                                    value={j.statut_joueur || 'en_vie'}

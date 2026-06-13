@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { collection, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction, writeBatch, arrayRemove } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, onSnapshot, runTransaction, writeBatch, arrayRemove } from 'firebase/firestore';
 
 import { db } from './firebase';
 import { rolesData } from './rolesData';
-import { ShieldAlert, AlertTriangle, EyeOff, User, Send, Play } from 'lucide-react';
+import { AlertTriangle, EyeOff, User, Send } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
 export default function PlayerScreen() {
@@ -25,16 +25,9 @@ export default function PlayerScreen() {
   // Modals & States for Powers
   const [showVoleurModal, setShowVoleurModal] = useState(false);
   const [showComedienModal, setShowComedienModal] = useState(false);
-  const [isSelecting, setIsSelecting] = useState(false);
   const [selectedPlayers, setSelectedPlayers] = useState([]); // Cupidon
-  
-  // Voyante state
   const [voyanteCible, setVoyanteCible] = useState(null);
-  
-  // Salvateur state
   const [salvateurCible, setSalvateurCible] = useState(null);
-
-  // Nuit Sorcière state
   const [potionVieActive, setPotionVieActive] = useState(false);
   const [showPotionMortSelection, setShowPotionMortSelection] = useState(false);
   const [cibleMortLocal, setCibleMortLocal] = useState(null);
@@ -67,6 +60,23 @@ export default function PlayerScreen() {
       }
     }
   }, [playerId, joueurs]);
+
+  // Theme Management (Jour / Nuit)
+  useEffect(() => {
+    if (!salonData) return;
+    const nightPhases = ['nuit_cupidon', 'nuit_voleur', 'nuit_salvateur', 'nuit_voyante', 'nuit_loups', 'nuit_sorciere'];
+    const dayPhases = ['matin', 'jour_vote', 'jour_resolution'];
+    
+    if (nightPhases.includes(salonData.statut)) {
+      document.body.classList.add('theme-nuit');
+      document.body.classList.remove('theme-jour');
+    } else if (dayPhases.includes(salonData.statut)) {
+      document.body.classList.add('theme-jour');
+      document.body.classList.remove('theme-nuit');
+    } else {
+      document.body.classList.remove('theme-nuit', 'theme-jour'); // Reset if en_attente
+    }
+  }, [salonData?.statut]);
 
   useEffect(() => {
     if (!salonData?.couple || salonData.couple.length !== 2 || !me) return;
@@ -206,8 +216,8 @@ export default function PlayerScreen() {
 
   const myRoleData = me.role ? rolesData.find(r => r.id === me.role) : null;
 
-  if (salonData.statut === "en_attente") {
-    if (salonData.distribution_mode === 'manuelle') {
+  if (salonData.statut === "en_attente" || salonData.statut === "en_cours") {
+    if (salonData.statut === "en_attente" && salonData.distribution_mode === 'manuelle' && !me.role) {
       return (
         <div className="player-screen">
           <ThemeToggle />
@@ -217,17 +227,12 @@ export default function PlayerScreen() {
               <h1 className="player-title">Bienvenue, <strong>{me.nom}</strong></h1>
               <p className="text-font text-muted">Le MJ distribue les rôles manuellement. Veuillez patienter...</p>
             </div>
-            {me.role && (
-               <div style={{marginTop: '2rem', textAlign: 'center'}}>
-                  <p className="text-font" style={{color: 'var(--success)', fontWeight: 'bold', fontSize: '1.2rem'}}>✅ Rôle assigné par le MJ. Attente du lancement...</p>
-               </div>
-            )}
           </div>
         </div>
       );
     }
     
-    if (me.carte_choisie === null) {
+    if (me.carte_choisie === null && salonData.distribution_mode !== 'manuelle') {
       const totalRoles = salonData.roles_selectionnes.length;
       const allCards = Array.from({ length: totalRoles }, (_, i) => i);
       const takenCards = joueurs.filter(j => j.carte_choisie !== null && j.carte_choisie !== 999).map(j => j.carte_choisie);
@@ -243,7 +248,7 @@ export default function PlayerScreen() {
             <div className="cards-grid" style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '15px', marginTop: '2rem'}}>
               {allCards.map(index => {
                  if (takenCards.includes(index)) return null;
-                 return <button key={index} onClick={() => handlePickCard(index)} className="mystery-card glass-panel text-font" style={{height: '120px', fontSize: '2rem', fontWeight: 'bold'}}>{index + 1}</button>;
+                 return <button key={index} onClick={() => handlePickCard(index)} className="mystery-card glass-panel text-font" style={{height: '120px', fontSize: '2rem', fontWeight: 'bold', borderRadius: '12px'}}>{index + 1}</button>;
               })}
             </div>
           </div>
@@ -251,15 +256,22 @@ export default function PlayerScreen() {
       );
     }
     
+    // Rôle assigné, attente du lancement de la nuit -> Affichage de la Flip Card
     return (
       <div className="player-screen">
         <ThemeToggle />
         <div className="ambient-bg" style={{ backgroundColor: myRoleData?.color || '#000' }}></div>
         <div className="player-content">
-          <div><span className="room-badge">SALON {roomId}</span><h1 className="player-title">En attente du MJ...</h1></div>
+          <div><span className="room-badge">SALON {roomId}</span><h1 className="player-title">La nuit va bientôt tomber...</h1></div>
           <div className="perspective-container">
             <button onClick={() => setShowRole(!showRole)} className={`flip-card ${showRole ? 'flipped' : ''}`}>
-              <div className="flip-card-front"><EyeOff size={64} style={{color: 'var(--text-muted)', marginBottom: '1.5rem'}} /><p>Appuyez pour révéler</p></div>
+              <div className="flip-card-front">
+                <div style={{width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem'}}>
+                  <EyeOff size={32} style={{color: 'var(--text-color)'}} />
+                </div>
+                <p>Carte Mystère</p>
+                <small>Appuyez pour révéler</small>
+              </div>
               <div className="flip-card-back" style={{ borderColor: myRoleData?.color, boxShadow: `0 10px 40px ${myRoleData?.color}40` }}>
                 <div className="card-gradient" style={{ background: `linear-gradient(to bottom, ${myRoleData?.color}30, transparent)` }}></div>
                 <div className="card-inner">
@@ -288,12 +300,12 @@ export default function PlayerScreen() {
       <div className="player-content">
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
            <span className="room-badge">SALON {roomId}</span>
-           {isDead && <span className="room-badge" style={{background: 'var(--danger)', color: 'white'}}>MORT</span>}
+           {isDead && <span className="room-badge" style={{background: 'var(--danger)', color: 'white', border: '1px solid #dc2626'}}>MORT</span>}
         </div>
         
         <div style={{marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
            <div>
-              <h1 className="player-title" style={{fontSize: '1.8rem', marginBottom: '0.2rem'}}>{me.nom}</h1>
+              <h1 className="player-title" style={{fontSize: '1.8rem', margin: 0, color: 'var(--text-color)'}}>{me.nom}</h1>
               <p className="text-font" style={{color: myRoleData?.color, fontWeight: 'bold'}}>{showRole ? myRoleData?.name : 'Rôle Masqué'}</p>
            </div>
            {!isDead && (
@@ -360,7 +372,7 @@ export default function PlayerScreen() {
                  <div style={{padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--danger)', borderRadius: '12px', marginBottom: '1rem'}}>
                    <h3 className="title-font text-danger">Action du Voleur</h3>
                    <button onClick={() => setShowVoleurModal(true)} className="btn-primary title-font glow-button" style={{width: '100%', marginBottom: '1rem', background: 'var(--danger)', border: 'none'}}>Voler une carte</button>
-                   <button onClick={() => handleVoleurAction('passer')} className="btn-secondary text-font" style={{width: '100%'}}>Ne rien faire / Passer</button>
+                   <button onClick={() => handleVoleurAction('passer')} className="btn-secondary text-font" style={{width: '100%', justifyContent: 'center'}}>Ne rien faire / Passer</button>
                  </div>
               )}
 
@@ -462,7 +474,7 @@ export default function PlayerScreen() {
                    <div style={{marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(139, 92, 246, 0.3)'}}>
                      <p className="text-font">🐺 Les loups ont décidé de tuer : <strong>{salonData.victime_loups || "Personne"}</strong></p>
                      {!me.potion_vie_utilisee ? (
-                        <button onClick={() => setPotionVieActive(!potionVieActive)} className={`btn-secondary text-font ${potionVieActive ? 'glow-button' : ''}`} style={{marginTop: '10px', width: '100%', borderColor: potionVieActive ? '#10b981' : '#8b5cf6', color: potionVieActive ? '#10b981' : 'var(--text-color)'}}>
+                        <button onClick={() => setPotionVieActive(!potionVieActive)} className={`btn-secondary text-font ${potionVieActive ? 'glow-button' : ''}`} style={{marginTop: '10px', width: '100%', borderColor: potionVieActive ? '#10b981' : '#8b5cf6', color: potionVieActive ? '#10b981' : 'var(--text-color)', justifyContent: 'center'}}>
                           {potionVieActive ? '✅ Potion de Vie (Sauver)' : '🧪 Utiliser Potion de Vie'}
                         </button>
                      ) : <p className="text-font text-muted" style={{marginTop: '10px'}}>🧪 Potion de vie indisponible</p>}
@@ -471,7 +483,7 @@ export default function PlayerScreen() {
                    <div style={{marginBottom: '1rem'}}>
                      {!me.potion_mort_utilisee ? (
                         <>
-                          <button onClick={() => setShowPotionMortSelection(!showPotionMortSelection)} className="btn-secondary text-font" style={{width: '100%', borderColor: '#ef4444', color: cibleMortLocal ? '#ef4444' : 'var(--text-color)'}}>
+                          <button onClick={() => setShowPotionMortSelection(!showPotionMortSelection)} className="btn-secondary text-font" style={{width: '100%', borderColor: '#ef4444', color: cibleMortLocal ? '#ef4444' : 'var(--text-color)', justifyContent: 'center'}}>
                             {cibleMortLocal ? `💀 Cible de mort : ${cibleMortLocal}` : '💀 Utiliser Potion de Mort'}
                           </button>
                           {showPotionMortSelection && (
@@ -558,13 +570,14 @@ export default function PlayerScreen() {
            </div>
         )}
 
+        {/* Display list of players (alive) */}
         <div className="players-list-panel glass-panel" style={{marginTop: '2rem'}}>
-           <h3 className="title-font" style={{marginBottom: '1rem', borderBottom: '1px solid var(--card-border)', paddingBottom: '0.5rem'}}>Joueurs en vie</h3>
+           <h3 className="title-font" style={{marginBottom: '1rem', borderBottom: '1px solid var(--card-border)', paddingBottom: '0.5rem', fontSize: '1.2rem'}}>Joueurs en vie</h3>
            <ul style={{listStyle: 'none', padding: 0}} className="text-font">
               {joueurs.filter(j => j.statut_joueur !== "mort").map(j => (
                  <li key={j.id} style={{padding: '10px', borderBottom: '1px solid var(--card-border)', display: 'flex', alignItems: 'center', gap: '10px'}}>
                     <div style={{width: '10px', height: '10px', borderRadius: '50%', background: 'var(--success)'}}></div>
-                    <span style={{fontWeight: j.id === me.id ? 'bold' : 'normal'}}>{j.nom} {j.id === me.id && "(Vous)"}</span>
+                    <span style={{fontWeight: j.id === me.id ? 'bold' : 'normal', color: 'var(--text-color)'}}>{j.nom} {j.id === me.id && "(Vous)"}</span>
                  </li>
               ))}
            </ul>
@@ -574,7 +587,7 @@ export default function PlayerScreen() {
       {/* MODALS */}
       {showVoleurModal && (
         <div className="modal-overlay">
-           <div className="modal-content glass-panel border-accent" style={{borderColor: 'var(--danger)'}}>
+           <div className="modal-content border-accent" style={{borderColor: 'var(--danger)'}}>
               <h3 className="title-font text-danger" style={{marginBottom: '1rem'}}>Action du Voleur</h3>
               <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Choisissez un joueur à voler.</p>
               <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
@@ -589,7 +602,7 @@ export default function PlayerScreen() {
 
       {showComedienModal && (
         <div className="modal-overlay">
-           <div className="modal-content glass-panel border-accent" style={{borderColor: '#fbbf24'}}>
+           <div className="modal-content border-accent" style={{borderColor: '#fbbf24'}}>
               <h3 className="title-font" style={{marginBottom: '1rem', color: '#fbbf24'}}>Action du Comédien</h3>
               <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                  {salonData.roles_dispo_comedien.map(rId => {
@@ -597,7 +610,7 @@ export default function PlayerScreen() {
                     return <button key={rId} onClick={() => handleComedienAction(rId)} className="btn-secondary text-font" style={{color: rData?.color, borderColor: rData?.color}}>Incarner {rData?.name}</button>
                  })}
               </div>
-              <button onClick={() => setShowComedienModal(false)} className="btn-secondary text-font" style={{marginTop: '1.5rem', width: '100%'}}>Annuler</button>
+              <button onClick={() => setShowComedienModal(false)} className="btn-secondary text-font" style={{marginTop: '1.5rem', width: '100%', justifyContent: 'center'}}>Annuler</button>
            </div>
         </div>
       )}
