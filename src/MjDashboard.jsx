@@ -80,6 +80,7 @@ export default function MjDashboard() {
   const { roomId } = useParams();
   const [salonData, setSalonData] = useState(null);
   const [joueurs, setJoueurs] = useState([]);
+  const [accusesMJ, setAccusesMJ] = useState([]);
 
   // Configuration state
   const [selectedRoles, setSelectedRoles] = useState([]);
@@ -156,6 +157,7 @@ export default function MjDashboard() {
         joueur_protege: null,
         illusion_active: false,
         infection_active: false,
+        la_liste_accuses: [],
         notifications_mj: [],
         notif_mj: null,
       });
@@ -290,10 +292,22 @@ export default function MjDashboard() {
       else if (count === maxVotes) { tie = true; }
     }
 
-    if (tie || !condamneNom) {
-      alert("Égalité parfaite ou aucun condamné. Personne ne meurt.");
+    if (tie) {
+      const bouc = joueurs.find(j => j.role === 'bouc-emissaire' && j.statut_joueur !== 'mort');
+      if (bouc) {
+        alert("⚖️ Égalité des votes ! Le Bouc Émissaire est éliminé par le village !");
+        condamneNom = bouc.nom;
+      } else {
+        alert("⚖️ Égalité ! Aucun Bouc Émissaire en vie, le village n'a pas pu trancher.");
+        try {
+          await updateDoc(doc(db, 'salons', roomId), { statut: 'jour_resolution', condamne_jour: 'Personne (Égalité)' });
+        } catch(e) {}
+        return;
+      }
+    } else if (!condamneNom) {
+      alert("Aucun condamné. Personne ne meurt.");
       try {
-        await updateDoc(doc(db, 'salons', roomId), { statut: 'jour_resolution', condamne_jour: 'Personne (Égalité)' });
+        await updateDoc(doc(db, 'salons', roomId), { statut: 'jour_resolution', condamne_jour: 'Personne' });
       } catch(e) {}
       return;
     }
@@ -340,6 +354,7 @@ export default function MjDashboard() {
         infection_active: false,
         condamne_jour: null,
         morts_nuit: null,
+        la_liste_accuses: [],
         notif_mj: null,
         notifications_mj: [],     // Réinitialise le journal pour la nouvelle nuit
       });
@@ -376,6 +391,7 @@ export default function MjDashboard() {
         joueur_protege: null,
         illusion_active: false,
         infection_active: false,
+        la_liste_accuses: [],
         notifications_mj: [],
         notif_mj: null,
       });
@@ -750,6 +766,10 @@ export default function MjDashboard() {
           joueurs.filter(j => j.statut_joueur !== 'mort' && j.vote_jour).forEach(j => {
             votesCount[j.vote_jour] = (votesCount[j.vote_jour] || 0) + 1;
           });
+          
+          const hasAccuses = salonData.la_liste_accuses && salonData.la_liste_accuses.length > 0;
+          const alivePlayers = joueurs.filter(j => j.statut_joueur !== 'mort');
+
           return (
             <div>
               <p className="text-font" style={{marginBottom: '1rem', fontSize: '1.1rem'}}>
@@ -760,28 +780,66 @@ export default function MjDashboard() {
                   ✨ L'Illusionniste a activé son pouvoir !
                 </div>
               )}
-              <div style={{background: 'var(--input-bg)', padding: '1rem', borderRadius: '8px', marginBottom: '1rem'}}>
-                <h4 className="title-font" style={{marginBottom: '10px', color: 'var(--text-color)'}}>Urne en temps réel :</h4>
-                {Object.entries(votesCount).length === 0 ? (
-                  <p className="text-muted text-font">Aucun vote pour l'instant.</p>
-                ) : (
-                  <ul style={{listStyle: 'none', padding: 0}} className="text-font">
-                    {Object.entries(votesCount).sort((a, b) => b[1] - a[1]).map(([nom, count]) => (
-                      <li key={nom} style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--card-border)', color: 'var(--text-color)'}}>
-                        <span>{nom}</span> <strong>{count} voix</strong>
-                      </li>
-                    ))}
+
+              {!hasAccuses ? (
+                <div style={{background: 'var(--input-bg)', padding: '1rem', borderRadius: '8px', marginBottom: '1rem'}}>
+                  <h4 className="title-font" style={{marginBottom: '10px', color: 'var(--text-color)'}}>Désigner les accusés :</h4>
+                  <ul style={{listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1rem'}}>
+                    {alivePlayers.map(j => {
+                      const isSel = accusesMJ.includes(j.nom);
+                      return (
+                        <li key={j.id} onClick={() => setAccusesMJ(prev => isSel ? prev.filter(n => n !== j.nom) : [...prev, j.nom])}
+                          style={{padding: '10px 14px', borderRadius: '8px', cursor: 'pointer', background: isSel ? 'var(--primary)' : 'rgba(255,255,255,0.05)', color: isSel ? '#000' : 'var(--text-color)', border: isSel ? '1px solid var(--primary)' : '1px solid transparent', fontWeight: isSel ? 'bold' : 'normal'}}
+                        >
+                          {isSel ? '☑' : '☐'} {j.nom}
+                        </li>
+                      );
+                    })}
                   </ul>
-                )}
-              </div>
-              {chasseurActif ? (
-                <button disabled className="btn-secondary title-font glow-button" style={{width: '100%', padding: '15px', fontSize: '1.2rem'}}>
-                  ⏳ En attente du tir de vengeance du Chasseur...
-                </button>
+                  <div style={{display: 'flex', gap: '10px', flexDirection: 'column'}}>
+                    <button 
+                      onClick={() => setAccusesMJ(alivePlayers.map(j => j.nom))}
+                      className="btn-secondary text-font" style={{width: '100%', padding: '10px', fontSize: '0.95rem'}}>
+                      📢 Accuser tout le village
+                    </button>
+                    <button 
+                      disabled={accusesMJ.length === 0}
+                      onClick={async () => {
+                        try {
+                          await updateDoc(doc(db, 'salons', roomId), { la_liste_accuses: accusesMJ });
+                        } catch(e) { console.error(e); }
+                      }}
+                      className="btn-primary title-font glow-button" style={{width: '100%', padding: '15px', fontSize: '1.1rem'}}>
+                      🔓 Ouvrir le vote pour les accusés
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <button onClick={handleApplyDaySentence} className="btn-primary title-font glow-button" style={{background: '#ef4444', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>
-                  Figer le Vote et Appliquer la Sentence 🔨
-                </button>
+                <>
+                  <div style={{background: 'var(--input-bg)', padding: '1rem', borderRadius: '8px', marginBottom: '1rem'}}>
+                    <h4 className="title-font" style={{marginBottom: '10px', color: 'var(--text-color)'}}>Urne en temps réel :</h4>
+                    {Object.entries(votesCount).length === 0 ? (
+                      <p className="text-muted text-font">Aucun vote pour l'instant.</p>
+                    ) : (
+                      <ul style={{listStyle: 'none', padding: 0}} className="text-font">
+                        {Object.entries(votesCount).sort((a, b) => b[1] - a[1]).map(([nom, count]) => (
+                          <li key={nom} style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--card-border)', color: 'var(--text-color)'}}>
+                            <span>{nom}</span> <strong>{count} voix</strong>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  {chasseurActif ? (
+                    <button disabled className="btn-secondary title-font glow-button" style={{width: '100%', padding: '15px', fontSize: '1.2rem'}}>
+                      ⏳ En attente du tir de vengeance du Chasseur...
+                    </button>
+                  ) : (
+                    <button onClick={handleApplyDaySentence} className="btn-primary title-font glow-button" style={{background: '#ef4444', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem'}}>
+                      Figer le Vote et Appliquer la Sentence 🔨
+                    </button>
+                  )}
+                </>
               )}
             </div>
           );

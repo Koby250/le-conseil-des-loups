@@ -716,7 +716,7 @@ export default function PlayerScreen() {
              <h3 className="title-font" style={{color: '#f59e0b', marginBottom: '1rem'}}>☀️ Phase de Vote du Village</h3>
              
              {/* POUVOIR ILLUSIONNISTE */}
-             {me.role === 'illusionniste' && me.illusion_dispo && (
+             {me.role === 'illusionniste' && me.illusion_dispo && salonData?.la_liste_accuses?.includes(me.nom) && (
                 <div style={{marginBottom: '1rem', padding: '1rem', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid #8b5cf6', borderRadius: '12px'}}>
                    <h4 className="title-font" style={{color: '#c4b5fd', marginBottom: '0.5rem'}}>✨ Pouvoir de l'Illusionniste</h4>
                    <p className="text-font" style={{fontSize: '0.85rem', marginBottom: '1rem'}}>Vous pouvez annuler la mort du prochain condamné au bûcher (vous y compris). Utilisable 1 fois.</p>
@@ -732,24 +732,47 @@ export default function PlayerScreen() {
                 </div>
              )}
 
-             <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Qui voulez-vous éliminer aujourd'hui ?</p>
-             <ul style={{listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
-               {allAlivePlayers.filter(j=>j.id!==me.id).map(j => {
-                 const isMyVote = me.vote_jour === j.nom;
-                 return (
-                   <li key={j.id} onClick={async () => {
-                       try {
-                         await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { vote_jour: isMyVote ? null : j.nom });
-                       } catch(e) {}
-                     }}
-                     style={{padding: '12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: isMyVote ? '#ef4444' : 'rgba(255,255,255,0.05)', color: isMyVote ? '#fff' : 'var(--text-color)', border: isMyVote ? '1px solid #b91c1c' : '1px solid transparent'}}
-                   >
-                     <span>{j.nom}</span>
-                     <span>{isMyVote ? '✅ Voté' : 'Voter contre'}</span>
-                   </li>
-                 );
-               })}
-             </ul>
+             {!(salonData?.la_liste_accuses?.length > 0) ? (
+                <p className="text-font text-muted" style={{textAlign: 'center', padding: '2rem 0', fontStyle: 'italic'}}>
+                  ⏳ En attente du MJ qui désigne les accusés du jour...
+                </p>
+             ) : (
+                <>
+                  <p className="text-font text-muted" style={{marginBottom: '1rem'}}>Les accusés du jour sont désignés. Qui voulez-vous éliminer ?</p>
+                  <ul style={{listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                    {salonData.la_liste_accuses.filter(nom => nom !== me.nom).map(nom => {
+                      const isMyVote = me.vote_jour === nom;
+                      return (
+                        <li key={nom} onClick={async () => {
+                            if (me.vote_jour) return; // Vote block inchangeable
+                            if(!window.confirm(`Confirmez-vous votre vote irrévocable contre ${nom} ?`)) return;
+                            try {
+                              await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { vote_jour: nom });
+                            } catch(e) {}
+                          }}
+                          style={{
+                            padding: '12px', borderRadius: '8px', 
+                            cursor: me.vote_jour ? 'not-allowed' : 'pointer', 
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+                            background: isMyVote ? '#ef4444' : 'rgba(255,255,255,0.05)', 
+                            color: isMyVote ? '#fff' : (me.vote_jour ? 'rgba(255,255,255,0.3)' : 'var(--text-color)'), 
+                            border: isMyVote ? '1px solid #b91c1c' : '1px solid transparent',
+                            opacity: me.vote_jour && !isMyVote ? 0.5 : 1
+                          }}
+                        >
+                          <span>{nom}</span>
+                          <span>{isMyVote ? '✅ A voté' : (me.vote_jour ? 'Bloqué' : 'Voter contre')}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {me.vote_jour && (
+                    <p className="text-font" style={{color: 'var(--success)', marginTop: '1rem', textAlign: 'center', fontWeight: 'bold'}}>
+                      Votre vote a été enregistré.
+                    </p>
+                  )}
+                </>
+             )}
            </div>
         )}
 
