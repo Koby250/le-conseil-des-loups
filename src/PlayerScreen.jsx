@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { collection, doc, setDoc, updateDoc, onSnapshot, runTransaction, writeBatch, arrayRemove } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, onSnapshot, runTransaction, writeBatch, arrayRemove, arrayUnion } from 'firebase/firestore';
 
 import { db } from './firebase';
 import { rolesData } from './rolesData';
@@ -31,6 +31,7 @@ export default function PlayerScreen() {
   const [potionVieActive, setPotionVieActive] = useState(false);
   const [showPotionMortSelection, setShowPotionMortSelection] = useState(false);
   const [cibleMortLocal, setCibleMortLocal] = useState(null);
+  const [cibleChasseur, setCibleChasseur] = useState(null);
 
   // Subscribe to Salon and Joueurs
   useEffect(() => {
@@ -78,6 +79,7 @@ export default function PlayerScreen() {
     }
   }, [salonData?.statut]);
 
+  // L'Ancien & Couple Sync
   useEffect(() => {
     if (!salonData?.couple || salonData.couple.length !== 2 || !me) return;
     const aliveStatuses = ['en_vie', 'En couple'];
@@ -121,7 +123,11 @@ export default function PlayerScreen() {
         illusion_dispo: true,
         dernier_protege: null,
         potion_vie_utilisee: false,
-        potion_mort_utilisee: false
+        potion_mort_utilisee: false,
+        vies: 2,
+        infection_dispo: false,
+        infection_repondu: false,
+        tir_chasseur_fait: false
       });
       localStorage.setItem(`loup_garou_${roomId}_playerId`, stableId);
       setPlayerId(stableId);
@@ -133,52 +139,74 @@ export default function PlayerScreen() {
     if (!salonData || !me) return;
     if (joueurs.some(j => j.carte_choisie === index)) return alert("Carte déjà prise !");
     const assignedRole = salonData.roles_melanges[index];
-    try { await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { carte_choisie: index, role: assignedRole }); } 
+    try { 
+      await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { 
+        carte_choisie: index, 
+        role: assignedRole,
+        infection_dispo: assignedRole === 'infect-pere-des-loups'
+      }); 
+    } 
     catch (err) { alert("Erreur."); }
   };
 
-  const handleVoleurAction = async (targetPlayerId) => {
+  const handleVoleurAction = async (action, targetPlayerId = null) => {
     if (!me || me.role !== 'voleur' || me.pouvoir_utilise) return;
     
-    if (targetPlayerId === 'passer') {
+    if (action === 'conserver') {
        try {
-         await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { pouvoir_utilise: true, a_vote: true });
-         setShowVoleurModal(false);
-         alert("Vous avez décidé de ne pas voler de carte.");
+         await runTransaction(db, async (transaction) => {
+           transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), { a_vote: true });
+           transaction.update(doc(db, 'salons', roomId), {
+             notifications_mj: arrayUnion(`🃏 Le Voleur (${me.nom}) a conservé son pouvoir pour une prochaine nuit.`)
+           });
+         });
+         alert("Pouvoir conservé !");
        } catch(e) { console.error(e); }
        return;
     }
 
-    const targetPlayer = joueurs.find(j => j.id === targetPlayerId);
-    if (!targetPlayer || !targetPlayer.role) return alert("Ce joueur n'a pas encore de rôle.");
-    if (!window.confirm(`Voler le rôle de ${targetPlayer.nom} ?`)) return;
+    if (action === 'activer') {
+       const targetPlayer = joueurs.find(j => j.id === targetPlayerId);
+       if (!targetPlayer || !targetPlayer.role) return alert("Ce joueur n'a pas encore de rôle.");
+       if (!window.confirm(`Voler le rôle de ${targetPlayer.nom} ?`)) return;
 
-    try {
-      const stolenRoleData = rolesData.find(r => r.id === targetPlayer.role);
-      const isLoup = stolenRoleData?.name?.toLowerCase().includes('loup') || false;
+       try {
+         const stolenRoleData = rolesData.find(r => r.id === targetPlayer.role);
+         const isLoup = stolenRoleData?.name?.toLowerCase().includes('loup') || false;
 
-      await runTransaction(db, async (transaction) => {
-        const voleurRef = doc(db, 'salons', roomId, 'joueurs', me.id);
-        const targetRef = doc(db, 'salons', roomId, 'joueurs', targetPlayerId);
-        const targetSnap = await transaction.get(targetRef);
+         await runTransaction(db, async (transaction) => {
+           const voleurRef = doc(db, 'salons', roomId, 'joueurs', me.id);
+           const targetRef = doc(db, 'salons', roomId, 'joueurs', targetPlayerId);
+           const targetSnap = await transaction.get(targetRef);
 
-        const vraiRoleCible = targetSnap.data().role;
-        const statutCible = targetSnap.data().statut_joueur;
-        const stolenRoleCheck = rolesData.find(r => r.id === vraiRoleCible);
-        const isLoupFinal = stolenRoleCheck?.name?.toLowerCase().includes('loup') || false;
-        
-        transaction.update(voleurRef, { role: vraiRoleCible, pouvoir_utilise: true, a_vote: true, statut_joueur: 'en_vie' });
+           const vraiRoleCible = targetSnap.data().role;
+           const statutCible = targetSnap.data().statut_joueur;
+           const stolenRoleCheck = rolesData.find(r => r.id === vraiRoleCible);
+           const isLoupFinal = stolenRoleCheck?.name?.toLowerCase().includes('loup') || false;
+           
+           transaction.update(voleurRef, { 
+             role: vraiRoleCible, 
+             pouvoir_utilise: true, 
+             a_vote: true, 
+             statut_joueur: 'en_vie',
+             infection_dispo: vraiRoleCible === 'infect-pere-des-loups' 
+           });
 
-        const targetUpdates = { role: 'voleur' };
-        if (isLoupFinal || statutCible === 'infecte') targetUpdates.statut_joueur = 'mort';
-        transaction.update(targetRef, targetUpdates);
-      });
+           const targetUpdates = { role: 'voleur' };
+           if (isLoupFinal || statutCible === 'infecte') targetUpdates.statut_joueur = 'mort';
+           transaction.update(targetRef, targetUpdates);
+           
+           transaction.update(doc(db, 'salons', roomId), {
+             notifications_mj: arrayUnion(`🃏 Le Voleur (${me.nom}) a volé la carte de ${targetPlayer.nom} (${stolenRoleCheck?.name || vraiRoleCible}).`)
+           });
+         });
 
-      setShowVoleurModal(false);
-      let msg = `Vol réussi ! Vous êtes : ${stolenRoleData?.name || targetPlayer.role}`;
-      if (isLoup) msg += '\n⚠️ La cible était un Loup — elle est éliminée.';
-      alert(msg);
-    } catch (err) { alert('Erreur vol : ' + err.message); }
+         setShowVoleurModal(false);
+         let msg = `Vol réussi ! Vous êtes : ${stolenRoleData?.name || targetPlayer.role}`;
+         if (isLoup) msg += '\n⚠️ La cible était un Loup — elle est éliminée.';
+         alert(msg);
+       } catch (err) { alert('Erreur vol : ' + err.message); }
+    }
   };
 
   const handleComedienAction = async (roleId) => {
@@ -186,7 +214,10 @@ export default function PlayerScreen() {
     if (!window.confirm("Incarner ce rôle ?")) return;
     try {
       const batch = writeBatch(db);
-      batch.update(doc(db, 'salons', roomId, 'joueurs', me.id), { role: roleId });
+      batch.update(doc(db, 'salons', roomId, 'joueurs', me.id), { 
+        role: roleId,
+        infection_dispo: roleId === 'infect-pere-des-loups'
+      });
       batch.update(doc(db, 'salons', roomId), { roles_dispo_comedien: arrayRemove(roleId) });
       await batch.commit();
       setShowComedienModal(false);
@@ -216,8 +247,11 @@ export default function PlayerScreen() {
 
   const myRoleData = me.role ? rolesData.find(r => r.id === me.role) : null;
 
-  if (salonData.statut === "en_attente" || salonData.statut === "en_cours") {
-    if (salonData.statut === "en_attente" && salonData.distribution_mode === 'manuelle' && !me.role) {
+  // ----------------------------------------------------------------------
+  // ÉCRAN D'ATTENTE OU CHOIX DES CARTES
+  // ----------------------------------------------------------------------
+  if (salonData.statut === "en_attente") {
+    if (salonData.distribution_mode === 'manuelle' && !me.role) {
       return (
         <div className="player-screen">
           <ThemeToggle />
@@ -256,10 +290,11 @@ export default function PlayerScreen() {
       );
     }
     
-    // Rôle assigné, attente du lancement de la nuit -> Affichage de la Flip Card
+    // Rôle assigné, attente du lancement de la nuit -> Affichage de la Flip Card (PHASE RÉVÉLATION)
     return (
       <div className="player-screen">
         <ThemeToggle />
+        {/* Phase révélation : Garde les couleurs actuelles du rôle */}
         <div className="ambient-bg" style={{ backgroundColor: myRoleData?.color || '#000' }}></div>
         <div className="player-content">
           <div><span className="room-badge">SALON {roomId}</span><h1 className="player-title">La nuit va bientôt tomber...</h1></div>
@@ -287,16 +322,26 @@ export default function PlayerScreen() {
     );
   }
 
-  // Game Phases
+  // ----------------------------------------------------------------------
+  // PHASE JEU (Après lancement : écran neutre)
+  // ----------------------------------------------------------------------
   const isDead = me.statut_joueur === "mort";
   const allAlivePlayers = joueurs.filter(j => j.statut_joueur !== "mort");
   const isMeLoup = me.role?.toLowerCase().includes('loup') || me.statut_joueur === 'infecte';
   const loupTargets = allAlivePlayers.filter(j => !(j.role?.toLowerCase().includes('loup') || j.statut_joueur === 'infecte'));
 
+  // Compagnons loups (dynamique, phase jeu)
+  const compagnonsLoups = isMeLoup
+    ? joueurs.filter(j => (j.role?.toLowerCase().includes('loup') || j.statut_joueur === 'infecte') && j.id !== me.id && j.statut_joueur !== 'mort')
+    : [];
+
+  const isNightMode = ['nuit_cupidon', 'nuit_voleur', 'nuit_salvateur', 'nuit_voyante', 'nuit_loups', 'nuit_sorciere'].includes(salonData?.statut);
+
   return (
     <div className="player-screen">
       <ThemeToggle />
-      <div className="ambient-bg" style={{ backgroundColor: isDead ? '#450a0a' : (myRoleData?.color || '#000') }}></div>
+      {/* Phase jeu : ambient-bg NEUTRE (transparent, sauf si mort) */}
+      <div className="ambient-bg" style={{ backgroundColor: isDead ? '#450a0a' : 'transparent' }}></div>
       <div className="player-content">
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
            <span className="room-badge">SALON {roomId}</span>
@@ -306,27 +351,88 @@ export default function PlayerScreen() {
         <div style={{marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
            <div>
               <h1 className="player-title" style={{fontSize: '1.8rem', margin: 0, color: 'var(--text-color)'}}>{me.nom}</h1>
-              <p className="text-font" style={{color: myRoleData?.color, fontWeight: 'bold'}}>{showRole ? myRoleData?.name : 'Rôle Masqué'}</p>
+              {/* PHASE JEU : texte du rôle neutre mais adaptable Nuit/Jour */}
+              <p className="text-font" style={{color: isNightMode ? '#f8fafc' : '#111827', fontWeight: 'bold', display: 'inline-block', marginTop: '6px'}}>
+                 {showRole ? (myRoleData?.name || 'Rôle Inconnu') : 'Rôle Masqué'}
+              </p>
            </div>
            {!isDead && (
-              <button onClick={() => setShowRole(!showRole)} className="btn-secondary text-font" style={{padding: '8px 12px', fontSize: '0.9rem', borderColor: myRoleData?.color, color: myRoleData?.color}}>
+              <button onClick={() => setShowRole(!showRole)} className="btn-secondary text-font" style={{padding: '8px 12px', fontSize: '0.9rem', borderColor: '#6b7280', color: 'var(--text-color)'}}>
                  {showRole ? 'Cacher' : 'Voir Rôle'}
               </button>
            )}
         </div>
 
+        {/* ACTION DU CHASSEUR MORT */}
+        {isDead && me.role === 'chasseur' && !me.tir_chasseur_fait && (
+           <div style={{marginTop: '2rem', padding: '1.5rem', background: 'rgba(239, 68, 68, 0.1)', border: '2px solid #ef4444', borderRadius: '12px', textAlign: 'center'}}>
+             <h3 className="title-font" style={{color: '#ef4444', marginBottom: '1rem'}}>🎯 Vous avez été éliminé !</h3>
+             <p className="text-font" style={{marginBottom: '1.5rem', color: isNightMode ? '#f8fafc' : '#111827'}}>Dans un dernier souffle, choisissez le joueur que vous emportez dans la tombe.</p>
+             <ul style={{listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1.5rem'}}>
+               {allAlivePlayers.map(j => {
+                 const isSel = cibleChasseur === j.nom;
+                 return (
+                   <li key={j.id} onClick={() => setCibleChasseur(j.nom)}
+                     style={{padding: '12px', borderRadius: '8px', cursor: 'pointer', background: isSel ? '#ef4444' : 'rgba(255,255,255,0.05)', color: isSel ? '#fff' : 'var(--text-color)', border: isSel ? '1px solid #b91c1c' : '1px solid transparent'}}
+                   >
+                     {isSel ? '🎯' : '○'} {j.nom}
+                   </li>
+                 );
+               })}
+             </ul>
+             <button onClick={async () => {
+                 if (!cibleChasseur) return;
+                 if (!window.confirm(`Tirer sur ${cibleChasseur} ? Il/Elle mourra instantanément.`)) return;
+                 try {
+                   await runTransaction(db, async (transaction) => {
+                     const targetDoc = joueurs.find(j => j.nom === cibleChasseur);
+                     if (targetDoc) {
+                       transaction.update(doc(db, 'salons', roomId, 'joueurs', targetDoc.id), { statut_joueur: 'mort' });
+                     }
+                     transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), { tir_chasseur_fait: true });
+                     transaction.update(doc(db, 'salons', roomId), {
+                       notifications_mj: arrayUnion(`🎯 Le Chasseur a éliminé ${cibleChasseur} dans son dernier souffle.`)
+                     });
+                   });
+                 } catch (e) { console.error(e); }
+               }} 
+               disabled={!cibleChasseur} className="btn-primary title-font glow-button" style={{width: '100%', background: '#ef4444', border: 'none', fontSize: '1.2rem', padding: '15px'}}
+             >🔥 Tirer</button>
+           </div>
+        )}
+
         {salonData?.couple?.includes(me.id) && (() => {
           const partnerId = salonData.couple.find(id => id !== me.id);
           const partner = joueurs.find(j => j.id === partnerId);
           if (!partner) return null;
-          const pRoleData = rolesData.find(r => r.id === partner.role);
           return (
             <div style={{marginTop: '1rem', padding: '12px 14px', background: 'rgba(236,72,153,0.15)', border: '2px solid #ec4899', borderRadius: '10px'}}>
               <p className="text-font" style={{margin: 0, color: '#ec4899', fontWeight: 'bold'}}>💖 En couple avec {partner.nom}</p>
-              <p className="text-font" style={{margin: '4px 0 0', fontSize: '0.9rem'}}>Rôle : <strong style={{color: pRoleData?.color||'#ec4899'}}>{pRoleData?.name||'Inconnu'}</strong></p>
             </div>
           );
         })()}
+
+        {/* SECTION COMPAGNONS LOUPS — visible uniquement pour les loups, en phase de jeu */}
+        {isMeLoup && compagnonsLoups.length > 0 && (
+          <div style={{marginTop: '1rem', padding: '12px 14px', background: 'rgba(239,68,68,0.1)', border: '2px solid #ef4444', borderRadius: '10px'}}>
+            <p className="text-font" style={{margin: 0, color: '#ef4444', fontWeight: 'bold'}}>🐺 Tes compagnons loups :</p>
+            <ul style={{margin: '6px 0 0', padding: '0 0 0 1.2rem'}} className="text-font">
+              {compagnonsLoups.map(j => {
+                const exactRoleName = rolesData.find(r => r.id === j.role)?.name || j.role;
+                return (
+                  <li key={j.id} style={{color: '#fca5a5', marginTop: '4px'}}>
+                    {j.nom} ({exactRoleName}{j.statut_joueur === 'infecte' ? ' - Infecté' : ''})
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+        {isMeLoup && compagnonsLoups.length === 0 && (
+          <div style={{marginTop: '1rem', padding: '10px 14px', background: 'rgba(239,68,68,0.07)', border: '1px solid #ef444488', borderRadius: '10px'}}>
+            <p className="text-font" style={{margin: 0, color: '#ef4444', fontSize: '0.9rem'}}>🐺 Tu es seul loup en vie ce soir.</p>
+          </div>
+        )}
 
         {!isDead && (
            <div className="powers-section" style={{marginTop: '2rem'}}>
@@ -355,7 +461,12 @@ export default function PlayerScreen() {
                        if (selectedPlayers.length !== 2) return;
                        try {
                          await runTransaction(db, async (transaction) => {
-                           transaction.update(doc(db, 'salons', roomId), { couple: [selectedPlayers[0], selectedPlayers[1]] });
+                           const j1 = joueurs.find(j => j.id === selectedPlayers[0])?.nom;
+                           const j2 = joueurs.find(j => j.id === selectedPlayers[1])?.nom;
+                           transaction.update(doc(db, 'salons', roomId), { 
+                             couple: [selectedPlayers[0], selectedPlayers[1]],
+                             notifications_mj: arrayUnion(`💖 Cupidon (${me.nom}) a mis en couple ${j1} et ${j2}.`)
+                           });
                            transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), { pouvoir_utilise: true, a_vote: true });
                            transaction.update(doc(db, 'salons', roomId, 'joueurs', selectedPlayers[0]), { statut_joueur: 'En couple' });
                            transaction.update(doc(db, 'salons', roomId, 'joueurs', selectedPlayers[1]), { statut_joueur: 'En couple' });
@@ -371,8 +482,9 @@ export default function PlayerScreen() {
               {salonData.statut === 'nuit_voleur' && me.role === 'voleur' && !me.a_vote && (
                  <div style={{padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--danger)', borderRadius: '12px', marginBottom: '1rem'}}>
                    <h3 className="title-font text-danger">Action du Voleur</h3>
-                   <button onClick={() => setShowVoleurModal(true)} className="btn-primary title-font glow-button" style={{width: '100%', marginBottom: '1rem', background: 'var(--danger)', border: 'none'}}>Voler une carte</button>
-                   <button onClick={() => handleVoleurAction('passer')} className="btn-secondary text-font" style={{width: '100%', justifyContent: 'center'}}>Ne rien faire / Passer</button>
+                   <p className="text-font text-muted" style={{fontSize: '0.85rem', marginBottom: '1rem'}}>Vous pouvez voler le rôle d'un joueur ou conserver votre pouvoir.</p>
+                   <button onClick={() => setShowVoleurModal(true)} className="btn-primary title-font glow-button" style={{width: '100%', marginBottom: '1rem', background: 'var(--danger)', border: 'none'}}>Activer mon pouvoir</button>
+                   <button onClick={() => handleVoleurAction('conserver')} className="btn-secondary text-font" style={{width: '100%', justifyContent: 'center'}}>Conserver mon pouvoir</button>
                  </div>
               )}
 
@@ -397,8 +509,13 @@ export default function PlayerScreen() {
                    <button onClick={async () => {
                        if (!salvateurCible) return;
                        try {
-                         await updateDoc(doc(db, 'salons', roomId), { joueur_protege: salvateurCible });
-                         await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { a_vote: true, dernier_protege: salvateurCible });
+                         await runTransaction(db, async (transaction) => {
+                           transaction.update(doc(db, 'salons', roomId), { 
+                             joueur_protege: salvateurCible,
+                             notifications_mj: arrayUnion(`🛡️ Salvateur (${me.nom}) a protégé ${salvateurCible}.`)
+                           });
+                           transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), { a_vote: true, dernier_protege: salvateurCible });
+                         });
                        } catch(e) { console.error(e); }
                      }} 
                      disabled={!salvateurCible} className="btn-primary title-font glow-button" style={{marginTop: '1rem', width: '100%', background: '#3b82f6', border: 'none'}}
@@ -422,9 +539,14 @@ export default function PlayerScreen() {
                    ) : (
                      <ul style={{listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px'}}>
                        {allAlivePlayers.filter(j=>j.id!==me.id).map(j => (
-                         <li key={j.id} onClick={() => {
+                         <li key={j.id} onClick={async () => {
                              const rData = rolesData.find(r => r.id === j.role);
                              setVoyanteCible({nom: j.nom, roleObj: rData});
+                             try {
+                               await updateDoc(doc(db, 'salons', roomId), {
+                                 notifications_mj: arrayUnion(`👁️ Voyante (${me.nom}) regarde la carte de ${j.nom}.`)
+                               });
+                             } catch(e) {}
                            }}
                            style={{padding: '10px', borderRadius: '8px', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '10px'}}
                          >
@@ -452,17 +574,64 @@ export default function PlayerScreen() {
                        );
                      })}
                    </ul>
-                   <button onClick={async () => {
-                       if (!salonData.vote_loup_temporaire) return;
-                       try {
-                         await runTransaction(db, async (transaction) => {
-                           transaction.update(doc(db, 'salons', roomId), { victime_loups: salonData.vote_loup_temporaire });
-                           transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), { a_vote: true });
-                         });
-                       } catch (e) { console.error(e); }
-                     }} 
-                     disabled={!salonData.vote_loup_temporaire} className="btn-primary title-font glow-button" style={{marginTop: '1rem', width: '100%', background: '#ef4444', border: 'none'}}
-                   >Confirmer le festin</button>
+
+                   {/* Spécial Infect Père des Loups */}
+                   {me.role === 'infect-pere-des-loups' && me.infection_dispo && !me.infection_repondu ? (
+                     <div style={{marginTop: '1.5rem', display: 'flex', gap: '10px', flexDirection: 'column', background: 'rgba(127,29,29,0.3)', padding: '12px', borderRadius: '8px', border: '1px solid #991b1b'}}>
+                        <p className="text-font" style={{color: '#fca5a5', fontSize: '0.95rem', margin: '0 0 10px', fontWeight: 'bold'}}>
+                           🧪 Confirmez le choix pour la meute :
+                        </p>
+                        <button onClick={async () => {
+                           if (!salonData.vote_loup_temporaire) return;
+                           try {
+                             await runTransaction(db, async (transaction) => {
+                               transaction.update(doc(db, 'salons', roomId), {
+                                 victime_loups: salonData.vote_loup_temporaire,
+                                 infection_active: true,
+                                 notifications_mj: arrayUnion(`🧪 L'Infect Père des Loups a infecté la cible : ${salonData.vote_loup_temporaire}.`)
+                               });
+                               transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), {
+                                 a_vote: true,
+                                 infection_dispo: false,
+                                 infection_repondu: true
+                               });
+                             });
+                             alert("Votre meute s'agrandit !");
+                           } catch(e) { console.error(e); }
+                        }} disabled={!salonData.vote_loup_temporaire} className="btn-primary title-font glow-button" style={{width: '100%', background: '#8b5cf6', border: 'none'}}>Infecter la cible</button>
+                        
+                        <button onClick={async () => {
+                           if (!salonData.vote_loup_temporaire) return;
+                           try {
+                             await runTransaction(db, async (transaction) => {
+                               transaction.update(doc(db, 'salons', roomId), {
+                                 victime_loups: salonData.vote_loup_temporaire,
+                                 notifications_mj: arrayUnion(`🐺 L'Infect Père des Loups a refusé d'infecter. La cible est : ${salonData.vote_loup_temporaire}.`)
+                               });
+                               transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), {
+                                 a_vote: true,
+                                 infection_repondu: true
+                               });
+                             });
+                           } catch(e) { console.error(e); }
+                        }} disabled={!salonData.vote_loup_temporaire} className="btn-secondary title-font" style={{width: '100%', border: '1px solid #ef4444', color: '#ef4444', justifyContent: 'center'}}>Laisser mourir</button>
+                     </div>
+                   ) : (
+                     <button onClick={async () => {
+                         if (!salonData.vote_loup_temporaire) return;
+                         try {
+                           await runTransaction(db, async (transaction) => {
+                             transaction.update(doc(db, 'salons', roomId), { 
+                               victime_loups: salonData.vote_loup_temporaire,
+                               notifications_mj: arrayUnion(`🐺 Un loup a confirmé la cible : ${salonData.vote_loup_temporaire}.`)
+                             });
+                             transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), { a_vote: true });
+                           });
+                         } catch (e) { console.error(e); }
+                       }} 
+                       disabled={!salonData.vote_loup_temporaire} className="btn-primary title-font glow-button" style={{marginTop: '1rem', width: '100%', background: '#ef4444', border: 'none'}}
+                     >Confirmer le festin</button>
+                   )}
                  </div>
               )}
 
@@ -509,8 +678,22 @@ export default function PlayerScreen() {
                          await runTransaction(db, async (transaction) => {
                            const updatesSalon = {};
                            const updatesMe = { a_vote_sorciere: true };
-                           if (potionVieActive) { updatesSalon.victime_sauvee = true; updatesMe.potion_vie_utilisee = true; }
-                           if (cibleMortLocal) { updatesSalon.victime_sorciere = cibleMortLocal; updatesMe.potion_mort_utilisee = true; }
+                           const notifs = [];
+                           if (potionVieActive) { 
+                             updatesSalon.victime_sauvee = true; 
+                             updatesMe.potion_vie_utilisee = true; 
+                             notifs.push(`🧪 Sorcière (${me.nom}) a sauvé la victime des loups.`);
+                           }
+                           if (cibleMortLocal) { 
+                             updatesSalon.victime_sorciere = cibleMortLocal; 
+                             updatesMe.potion_mort_utilisee = true;
+                             notifs.push(`💀 Sorcière (${me.nom}) a tué ${cibleMortLocal}.`);
+                           }
+                           if (notifs.length === 0) {
+                             notifs.push(`🧙‍♀️ Sorcière (${me.nom}) n'a rien fait.`);
+                           }
+                           updatesSalon.notifications_mj = arrayUnion(...notifs);
+
                            if (Object.keys(updatesSalon).length > 0) transaction.update(doc(db, 'salons', roomId), updatesSalon);
                            transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), updatesMe);
                          });
@@ -589,10 +772,10 @@ export default function PlayerScreen() {
         <div className="modal-overlay">
            <div className="modal-content border-accent" style={{borderColor: 'var(--danger)'}}>
               <h3 className="title-font text-danger" style={{marginBottom: '1rem'}}>Action du Voleur</h3>
-              <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Choisissez un joueur à voler.</p>
-              <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+              <p className="text-font text-muted" style={{marginBottom: '1.5rem'}}>Choisissez un joueur à voler. Votre rôle précédent sera perdu.</p>
+              <div style={{display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '50vh', overflowY: 'auto'}}>
                  {joueurs.filter(j => j.id !== me.id && j.role && j.statut_joueur !== "mort").map(p => (
-                    <button key={p.id} onClick={() => handleVoleurAction(p.id)} className="btn-secondary text-font" style={{justifyContent: 'flex-start'}}>Voler {p.nom}</button>
+                    <button key={p.id} onClick={() => handleVoleurAction('activer', p.id)} className="btn-secondary text-font" style={{justifyContent: 'flex-start'}}>Voler {p.nom}</button>
                  ))}
               </div>
               <button onClick={() => setShowVoleurModal(false)} className="btn-secondary text-font" style={{marginTop: '1.5rem', width: '100%', justifyContent: 'center'}}>Annuler</button>
