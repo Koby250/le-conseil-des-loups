@@ -225,25 +225,51 @@ export default function MjDashboard() {
         // 1. Victime des loups
         if (salonData.victime_loups && !salonData.victime_sauvee) {
           const loupVictimDoc = joueurs.find(j => j.nom === salonData.victime_loups);
-          if (loupVictimDoc && loupVictimDoc.nom !== salonData.joueur_protege) {
+          if (loupVictimDoc) {
+            const isProtected = loupVictimDoc.nom === salonData.joueur_protege;
+            const isAncienFirstLife = loupVictimDoc.role === 'ancien' && (loupVictimDoc.vies ?? 2) > 1;
 
-            if (salonData.infection_active) {
-              // L'Infect Père des Loups a infecté la victime → elle rejoint la meute
-              transaction.update(doc(db, 'salons', roomId, 'joueurs', loupVictimDoc.id), {
-                statut_joueur: 'infecte',
-              });
-              newNotifications.push(`🧪 ${loupVictimDoc.nom} a été infecté et rejoint le camp des loups !`);
-              diedFromLoups = false;
-            } else if (loupVictimDoc.role === 'ancien' && (loupVictimDoc.vies ?? 2) > 1) {
-              // L'Ancien survit à la première attaque
+            if (isProtected) {
+              // 1. IMMUNITÉ DU SALVATEUR
+              if (salonData.infection_active) {
+                const infectPere = joueurs.find(j => j.role === 'infect-pere-des-loups');
+                if (infectPere) {
+                  transaction.update(doc(db, 'salons', roomId, 'joueurs', infectPere.id), { infection_dispo: true });
+                }
+                newNotifications.push("🛡️ L'Infection a échoué car la cible était protégée par le Salvateur (Pouvoir conservé).");
+              }
+            } else if (isAncienFirstLife) {
+              // 2. IMMUNITÉ DE L'ANCIEN
               transaction.update(doc(db, 'salons', roomId, 'joueurs', loupVictimDoc.id), { vies: 1 });
-              notifMj = `🛡️ L'Ancien (${loupVictimDoc.nom}) a été attaqué mais a survécu (vies restantes : 1).`;
-              diedFromLoups = false;
+              if (salonData.infection_active) {
+                const infectPere = joueurs.find(j => j.role === 'infect-pere-des-loups');
+                if (infectPere) {
+                  transaction.update(doc(db, 'salons', roomId, 'joueurs', infectPere.id), { infection_dispo: true });
+                }
+                newNotifications.push("🛡️ L'Ancien a résisté à l'infection grâce à sa première vie (Pouvoir conservé).");
+              } else {
+                notifMj = `🛡️ L'Ancien (${loupVictimDoc.nom}) a été attaqué mais a survécu (vies restantes : 1).`;
+              }
             } else {
-              transaction.update(doc(db, 'salons', roomId, 'joueurs', loupVictimDoc.id), { statut_joueur: 'mort' });
-              diedFromLoups = true;
+              // 3. APPLICATION DE L'INFECTION / MORT NORMALE
+              if (salonData.infection_active) {
+                transaction.update(doc(db, 'salons', roomId, 'joueurs', loupVictimDoc.id), {
+                  statut_joueur: 'infecte',
+                });
+                newNotifications.push(`🧪 ${loupVictimDoc.nom} a été infecté et rejoint le camp des loups !`);
+              } else {
+                transaction.update(doc(db, 'salons', roomId, 'joueurs', loupVictimDoc.id), { statut_joueur: 'mort' });
+                diedFromLoups = true;
+              }
             }
           }
+        } else if (salonData.victime_loups && salonData.victime_sauvee && salonData.infection_active) {
+          // Si pour une raison ou une autre la victime a été sauvée par la sorcière ALORS QUE l'infection était active
+          const infectPere = joueurs.find(j => j.role === 'infect-pere-des-loups');
+          if (infectPere) {
+            transaction.update(doc(db, 'salons', roomId, 'joueurs', infectPere.id), { infection_dispo: true });
+          }
+          newNotifications.push("🛡️ L'Infection a échoué car la cible a été sauvée (Pouvoir conservé).");
         }
 
         // 2. Victime de la Sorcière
@@ -772,6 +798,29 @@ export default function MjDashboard() {
 
           return (
             <div>
+              {/* COMPOSANT VISUEL D'ALERTE - VERDICT DE LA NUIT */}
+              {(() => {
+                const morts = [];
+                if (salonData.morts_nuit?.loups) morts.push(salonData.morts_nuit.loups);
+                if (salonData.morts_nuit?.sorciere) morts.push(salonData.morts_nuit.sorciere);
+                
+                const uniqueMorts = [...new Set(morts)];
+                
+                if (uniqueMorts.length > 0) {
+                  return (
+                    <div style={{background: 'rgba(239, 68, 68, 0.15)', border: '2px solid #ef4444', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem', textAlign: 'center', boxShadow: '0 0 20px rgba(239, 68, 68, 0.2)'}}>
+                      <h3 className="title-font" style={{color: '#ef4444', fontSize: '1.4rem', margin: 0}}>💀 VERDICT DE LA NUIT : Les joueurs suivants ont été éliminés : {uniqueMorts.join(', ')}.</h3>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div style={{background: 'rgba(16, 185, 129, 0.15)', border: '2px solid #10b981', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem', textAlign: 'center', boxShadow: '0 0 20px rgba(16, 185, 129, 0.2)'}}>
+                      <h3 className="title-font" style={{color: '#10b981', fontSize: '1.4rem', margin: 0}}>✨ VERDICT DE LA NUIT : Pas de mort ce matin !</h3>
+                    </div>
+                  );
+                }
+              })()}
+
               <p className="text-font" style={{marginBottom: '1rem', fontSize: '1.1rem'}}>
                 ☀️ Le village débat et vote pour éliminer un suspect.
               </p>

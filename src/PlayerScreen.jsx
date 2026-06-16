@@ -363,6 +363,29 @@ export default function PlayerScreen() {
            )}
         </div>
 
+        {/* COMPOSANT VISUEL D'ALERTE - VERDICT DE LA NUIT (Visible par tous au matin) */}
+        {salonData?.statut === 'jour_vote' && (() => {
+          const morts = [];
+          if (salonData.morts_nuit?.loups) morts.push(salonData.morts_nuit.loups);
+          if (salonData.morts_nuit?.sorciere) morts.push(salonData.morts_nuit.sorciere);
+          const uniqueMorts = [...new Set(morts)];
+          
+          if (uniqueMorts.length > 0) {
+            return (
+              <div style={{marginTop: '1.5rem', background: 'rgba(239, 68, 68, 0.15)', border: '2px solid #ef4444', borderRadius: '12px', padding: '1.5rem', textAlign: 'center', boxShadow: '0 0 20px rgba(239, 68, 68, 0.2)'}}>
+                <h3 className="title-font" style={{color: '#ef4444', fontSize: '1.2rem', margin: 0}}>💀 VERDICT DE LA NUIT : Les joueurs suivants ont été éliminés : {uniqueMorts.join(', ')}.</h3>
+              </div>
+            );
+          } else {
+            return (
+              <div style={{marginTop: '1.5rem', background: 'rgba(16, 185, 129, 0.15)', border: '2px solid #10b981', borderRadius: '12px', padding: '1.5rem', textAlign: 'center', boxShadow: '0 0 20px rgba(16, 185, 129, 0.2)'}}>
+                <h3 className="title-font" style={{color: '#10b981', fontSize: '1.2rem', margin: 0}}>✨ VERDICT DE LA NUIT : Pas de mort ce matin !</h3>
+              </div>
+            );
+          }
+        })()}
+
+
         {/* ACTION DU CHASSEUR MORT */}
         {isDead && me.role === 'chasseur' && !me.tir_chasseur_fait && (
            <div style={{marginTop: '2rem', padding: '1.5rem', background: 'rgba(239, 68, 68, 0.1)', border: '2px solid #ef4444', borderRadius: '12px', textAlign: 'center'}}>
@@ -413,7 +436,7 @@ export default function PlayerScreen() {
         })()}
 
         {/* SECTION COMPAGNONS LOUPS — visible uniquement pour les loups, en phase de jeu */}
-        {isMeLoup && compagnonsLoups.length > 0 && (
+        {isMeLoup && showRole && compagnonsLoups.length > 0 && (
           <div style={{marginTop: '1rem', padding: '12px 14px', background: 'rgba(239,68,68,0.1)', border: '2px solid #ef4444', borderRadius: '10px'}}>
             <p className="text-font" style={{margin: 0, color: '#ef4444', fontWeight: 'bold'}}>🐺 Tes compagnons loups :</p>
             <ul style={{margin: '6px 0 0', padding: '0 0 0 1.2rem'}} className="text-font">
@@ -428,7 +451,7 @@ export default function PlayerScreen() {
             </ul>
           </div>
         )}
-        {isMeLoup && compagnonsLoups.length === 0 && (
+        {isMeLoup && showRole && compagnonsLoups.length === 0 && (
           <div style={{marginTop: '1rem', padding: '10px 14px', background: 'rgba(239,68,68,0.07)', border: '1px solid #ef444488', borderRadius: '10px'}}>
             <p className="text-font" style={{margin: 0, color: '#ef4444', fontSize: '0.9rem'}}>🐺 Tu es seul loup en vie ce soir.</p>
           </div>
@@ -641,12 +664,20 @@ export default function PlayerScreen() {
                    <h3 className="title-font" style={{color: '#8b5cf6'}}>🧙‍♀️ Tour de la Sorcière</h3>
                    
                    <div style={{marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(139, 92, 246, 0.3)'}}>
-                     <p className="text-font">🐺 Les loups ont décidé de tuer : <strong>{salonData.victime_loups || "Personne"}</strong></p>
-                     {!me.potion_vie_utilisee ? (
-                        <button onClick={() => setPotionVieActive(!potionVieActive)} className={`btn-secondary text-font ${potionVieActive ? 'glow-button' : ''}`} style={{marginTop: '10px', width: '100%', borderColor: potionVieActive ? '#10b981' : '#8b5cf6', color: potionVieActive ? '#10b981' : 'var(--text-color)', justifyContent: 'center'}}>
-                          {potionVieActive ? '✅ Potion de Vie (Sauver)' : '🧪 Utiliser Potion de Vie'}
-                        </button>
-                     ) : <p className="text-font text-muted" style={{marginTop: '10px'}}>🧪 Potion de vie indisponible</p>}
+                     {salonData.infection_active ? (
+                       <p className="text-font" style={{color: '#f8fafc'}}>🐺 Les loups n'ont fait aucune victime cette nuit.</p>
+                     ) : (
+                       <>
+                         <p className="text-font">🐺 Les loups ont décidé de tuer : <strong>{salonData.victime_loups || "Personne"}</strong></p>
+                         {salonData.victime_loups && (
+                           !me.potion_vie_utilisee ? (
+                              <button onClick={() => setPotionVieActive(!potionVieActive)} className={`btn-secondary text-font ${potionVieActive ? 'glow-button' : ''}`} style={{marginTop: '10px', width: '100%', borderColor: potionVieActive ? '#10b981' : '#8b5cf6', color: potionVieActive ? '#10b981' : 'var(--text-color)', justifyContent: 'center'}}>
+                                {potionVieActive ? '✅ Potion de Vie (Sauver)' : '🧪 Utiliser Potion de Vie'}
+                              </button>
+                           ) : <p className="text-font text-muted" style={{marginTop: '10px'}}>🧪 Potion de vie indisponible</p>
+                         )}
+                       </>
+                     )}
                    </div>
 
                    <div style={{marginBottom: '1rem'}}>
