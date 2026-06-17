@@ -412,6 +412,46 @@ export default function PlayerScreen() {
   // PHASE DE JEU (après lancement)
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // ─── Early return : Fin de partie ──────────────────────────────────────────
+  if (salonData?.statut === 'fin_village' || salonData?.statut === 'fin_loups') {
+    const isVillageWin = salonData.statut === 'fin_village';
+    return (
+      <div className="player-screen">
+        <ThemeToggle />
+        <div className="ambient-bg" style={{ backgroundColor: isVillageWin ? '#064e3b' : '#450a0a' }} />
+        <div className="player-content" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', textAlign: 'center' }}>
+          <h1 className="title-font" style={{ fontSize: '3rem', color: isVillageWin ? '#10b981' : '#ef4444', marginBottom: '1rem', textShadow: '0 0 20px rgba(0,0,0,0.5)' }}>
+            {isVillageWin ? '🎉 VICTOIRE DU VILLAGE !' : '🐺 VICTOIRE DES LOUPS !'}
+          </h1>
+          <p className="text-font" style={{ fontSize: '1.5rem', color: '#f8fafc', marginBottom: '3rem' }}>
+            {isVillageWin ? 'Tous les loups ont été éliminés !' : 'Le village a été dévoré !'}
+          </p>
+          
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '500px', padding: '1.5rem', textAlign: 'left', margin: '0 auto' }}>
+            <h3 className="title-font" style={{ marginBottom: '1rem', color: 'var(--text-color)', borderBottom: '1px solid var(--card-border)', paddingBottom: '0.5rem' }}>
+              Rôles de la partie
+            </h3>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {joueurs.map(j => {
+                const rObj = rolesData.find(r => r.id === j.role);
+                return (
+                  <li key={j.id} className="text-font" style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid var(--card-border)' }}>
+                    <span style={{ color: j.statut_joueur === 'mort' ? 'var(--text-muted)' : 'var(--text-color)', textDecoration: j.statut_joueur === 'mort' ? 'line-through' : 'none', fontWeight: 'bold' }}>
+                      {j.nom}
+                    </span>
+                    <span style={{ color: rObj?.color || 'var(--text-muted)', fontWeight: 'bold' }}>
+                      {rObj?.name || j.role} {j.statut_joueur === 'infecte' && '(Infecté)'}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const isDead         = me.statut_joueur === 'mort';
   const allAlivePlayers = joueurs.filter(j => j.statut_joueur !== 'mort');
   const isMeLoup       = me.role?.toLowerCase().includes('loup') || me.statut_joueur === 'infecte';

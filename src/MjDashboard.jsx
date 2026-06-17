@@ -103,6 +103,25 @@ export default function MjDashboard() {
     return () => { unsubSalon(); unsubJoueurs(); };
   }, [roomId]);
 
+  // ── Vérification des conditions de victoire ───────────────────────────────
+  useEffect(() => {
+    if (!salonData || !joueurs.length) return;
+    const isPlaying = salonData.statut !== 'en_attente' && salonData.statut !== 'fin_village' && salonData.statut !== 'fin_loups';
+    if (!isPlaying) return;
+
+    const alivePlayers = joueurs.filter(j => j.statut_joueur !== 'mort');
+    if (alivePlayers.length === 0) return; // Tout le monde est mort
+
+    const totalLoups = alivePlayers.filter(j => j.role?.toLowerCase().includes('loup') || j.statut_joueur === 'infecte').length;
+    const totalVillageois = alivePlayers.length - totalLoups;
+
+    if (totalLoups === 0) {
+      updateDoc(doc(db, 'salons', roomId), { statut: 'fin_village' }).catch(console.error);
+    } else if (totalLoups >= totalVillageois) {
+      updateDoc(doc(db, 'salons', roomId), { statut: 'fin_loups' }).catch(console.error);
+    }
+  }, [joueurs, salonData?.statut, roomId]);
+
   // ── Gestion du thème Jour / Nuit ──────────────────────────────────────────
   useEffect(() => {
     if (!salonData) return;
@@ -389,8 +408,15 @@ export default function MjDashboard() {
       }
     });
 
-    if (Object.keys(votesCount).length === 0)
-      return alert("Aucun vote n'a été enregistré.");
+    if (Object.keys(votesCount).length === 0) {
+      alert("Aucun vote n'a été enregistré. Le village a décidé de ne tuer personne.");
+      try {
+        await updateDoc(doc(db, 'salons', roomId), {
+          statut: 'jour_resolution', condamne_jour: 'Personne (Vote ignoré)',
+        });
+      } catch (e) { console.error(e); }
+      return;
+    }
 
     let maxVotes    = 0;
     let condamneNom = null;
@@ -1134,16 +1160,44 @@ export default function MjDashboard() {
                     ⏳ En attente du tir de vengeance du Chasseur...
                   </button>
                 ) : (
-                  <button
-                    onClick={handleApplyDaySentence}
-                    className="btn-primary title-font glow-button"
-                    style={{ background: '#ef4444', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem' }}
-                  >
-                    Figer le Vote et Appliquer la Sentence 🔨
-                  </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <button
+                      onClick={handleApplyDaySentence}
+                      className="btn-primary title-font glow-button"
+                      style={{ background: '#ef4444', border: 'none', width: '100%', padding: '15px', fontSize: '1.2rem' }}
+                    >
+                      Figer le Vote et Appliquer la Sentence 🔨
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("Passer à la nuit sans tuer personne ?")) return;
+                        try {
+                          await updateDoc(doc(db, 'salons', roomId), {
+                            statut: 'jour_resolution', condamne_jour: 'Personne (Vote ignoré par MJ)',
+                          });
+                        } catch (e) { console.error(e); }
+                      }}
+                      className="btn-secondary text-font"
+                      style={{ width: '100%', padding: '15px', fontSize: '1.1rem', borderColor: '#64748b', color: 'var(--text-color)', justifyContent: 'center' }}
+                    >
+                      Passer le vote (Nuit Blanche)
+                    </button>
+                  </div>
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {/* FIN DE PARTIE */}
+        {(isPhase('fin_village') || isPhase('fin_loups')) && (
+          <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+            <h1 className="title-font glow-text" style={{ fontSize: '2.5rem', margin: '0 0 1rem', color: isPhase('fin_village') ? '#10b981' : '#ef4444' }}>
+              {isPhase('fin_village') ? '🎉 VICTOIRE DU VILLAGE !' : '🐺 VICTOIRE DES LOUPS !'}
+            </h1>
+            <p className="text-font" style={{ fontSize: '1.2rem', marginBottom: '2rem', color: 'var(--text-color)' }}>
+              {isPhase('fin_village') ? 'Tous les loups ont été éliminés !' : 'Le village a été dévoré !'}
+            </p>
           </div>
         )}
 
