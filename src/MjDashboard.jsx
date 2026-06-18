@@ -35,25 +35,28 @@ function computeNightPhases(joueurs) {
 
   if (alive.some(j => j.role === 'cupidon' && !j.pouvoir_utilise))
     phases.push('nuit_cupidon');
-  if (alive.some(j => j.role === 'voleur' && !j.pouvoir_utilise))
-    phases.push('nuit_voleur');
   if (alive.some(j => j.role === 'salvateur'))
     phases.push('nuit_salvateur');
   if (alive.some(j => j.role === 'voyante'))
     phases.push('nuit_voyante');
-  if (alive.some(j => j.role?.toLowerCase().includes('loup') || j.statut_joueur === 'infecte'))
+  if (alive.some(j => j.role?.toLowerCase().includes('loup') || j.est_infecte === true))
     phases.push('nuit_loups');
   if (alive.some(j => j.role === 'sorciere'))
     phases.push('nuit_sorciere');
+  if (alive.some(j => j.role === 'voleur' && !j.pouvoir_utilise))
+    phases.push('nuit_voleur');
 
   return phases.length > 0 ? phases : ['nuit_loups'];
 }
 
 function getNextNightPhase(currentPhase, joueurs) {
   const phases = computeNightPhases(joueurs);
-  const idx = phases.indexOf(currentPhase);
-  if (idx === -1 || idx === phases.length - 1) return 'matin';
-  return phases[idx + 1];
+  const currentIndex = ALL_NIGHT_PHASES.indexOf(currentPhase);
+  if (currentIndex === -1) return 'matin';
+  for (let i = currentIndex + 1; i < ALL_NIGHT_PHASES.length; i++) {
+    if (phases.includes(ALL_NIGHT_PHASES[i])) return ALL_NIGHT_PHASES[i];
+  }
+  return 'matin';
 }
 
 const PHASE_LABELS = {
@@ -66,8 +69,8 @@ const PHASE_LABELS = {
 };
 
 const ALL_NIGHT_PHASES = [
-  'nuit_cupidon', 'nuit_voleur', 'nuit_salvateur',
-  'nuit_voyante', 'nuit_loups', 'nuit_sorciere',
+  'nuit_cupidon', 'nuit_salvateur', 'nuit_voyante',
+  'nuit_loups', 'nuit_sorciere', 'nuit_voleur',
 ];
 
 // ─── Composant principal ─────────────────────────────────────────────────────
@@ -112,7 +115,7 @@ export default function MjDashboard() {
     const alivePlayers = joueurs.filter(j => j.statut_joueur !== 'mort');
     if (alivePlayers.length === 0) return; // Tout le monde est mort
 
-    const totalLoups = alivePlayers.filter(j => j.role?.toLowerCase().includes('loup') || j.statut_joueur === 'infecte').length;
+    const totalLoups = alivePlayers.filter(j => j.role?.toLowerCase().includes('loup') || j.est_infecte === true).length;
     const totalVillageois = alivePlayers.length - totalLoups;
 
     if (totalLoups === 0) {
@@ -212,6 +215,21 @@ export default function MjDashboard() {
         infection_repondu: false,
       });
     } catch (e) { console.error(e); }
+  };
+
+  // ── Ajout dynamique d'un joueur ───────────────────────────────────────────
+  const handleAddPlayer = async () => {
+    try {
+      const newRoles = [...salonData.roles_selectionnes, 'villageois'];
+      const shuffled = shuffleArray([...newRoles]);
+      await updateDoc(doc(db, 'salons', roomId), {
+        roles_selectionnes: newRoles,
+        roles_melanges: shuffled,
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Erreur lors de l'ajout d'un joueur");
+    }
   };
 
   // ── Lancement de la partie ────────────────────────────────────────────────
@@ -328,19 +346,38 @@ export default function MjDashboard() {
             } else {
               // ── Mort normale ou infection ──────────────────────────────
               if (salonData.infection_active) {
-                transaction.update(
-                  doc(db, 'salons', roomId, 'joueurs', loupVictimDoc.id),
-                  { statut_joueur: 'infecte' },
-                );
-                newNotifications.push(
-                  `🧪 ${loupVictimDoc.nom} a été infecté et rejoint le camp des loups !`,
-                );
+                if (loupVictimDoc.role === 'chevalier') {
+                  transaction.update(
+                    doc(db, 'salons', roomId, 'joueurs', loupVictimDoc.id),
+                    { statut_joueur: 'mort' },
+                  );
+                  diedFromLoups = true;
+                  newNotifications.push("🛡️ L'Infection a échoué sur le Chevalier ! Il meurt de l'attaque.");
+                  transaction.update(doc(db, 'salons', roomId), { 
+                    venin_chevalier_actif: true, 
+                    index_chevalier: joueurs.findIndex(j => j.id === loupVictimDoc.id)
+                  });
+                } else {
+                  transaction.update(
+                    doc(db, 'salons', roomId, 'joueurs', loupVictimDoc.id),
+                    { est_infecte: true },
+                  );
+                  newNotifications.push(
+                    `🧪 ${loupVictimDoc.nom} a été infecté et rejoint le camp des loups !`,
+                  );
+                }
               } else {
                 transaction.update(
                   doc(db, 'salons', roomId, 'joueurs', loupVictimDoc.id),
                   { statut_joueur: 'mort' },
                 );
                 diedFromLoups = true;
+                if (loupVictimDoc.role === 'chevalier') {
+                  transaction.update(doc(db, 'salons', roomId), { 
+                    venin_chevalier_actif: true, 
+                    index_chevalier: joueurs.findIndex(j => j.id === loupVictimDoc.id)
+                  });
+                }
               }
             }
           }
@@ -376,6 +413,7 @@ export default function MjDashboard() {
           morts_nuit: {
             loups:    diedFromLoups    ? salonData.victime_loups    : null,
             sorciere: diedFromSorciere ? salonData.victime_sorciere : null,
+            venin:    salonData.morts_nuit?.venin || null,
           },
           infection_active: false,
           notif_mj: notifMj,
@@ -492,6 +530,25 @@ export default function MjDashboard() {
       const phases     = computeNightPhases(joueurs);
       const firstPhase = phases[0] || 'nuit_loups';
 
+      let veninVictim = null;
+      let veninNotif = null;
+
+      if (salonData.venin_chevalier_actif && salonData.index_chevalier !== null && salonData.index_chevalier !== undefined) {
+        const idx = salonData.index_chevalier;
+        for (let i = 1; i <= joueurs.length; i++) {
+          const checkIdx = (idx + i) % joueurs.length;
+          const p = joueurs[checkIdx];
+          if (p.statut_joueur !== 'mort' && (p.role?.toLowerCase().includes('loup') || p.est_infecte === true)) {
+            veninVictim = p;
+            break;
+          }
+        }
+        if (veninVictim) {
+          batch.update(doc(db, 'salons', roomId, 'joueurs', veninVictim.id), { statut_joueur: 'mort' });
+          veninNotif = `🗡️ Le venin du Chevalier a frappé : ${veninVictim.nom} meurt.`;
+        }
+      }
+
       batch.update(doc(db, 'salons', roomId), {
         statut: firstPhase,
         victime_loups: null,
@@ -504,11 +561,12 @@ export default function MjDashboard() {
         illusion_active: false,
         infection_active: false,
         condamne_jour: null,
-        morts_nuit: null,
+        morts_nuit: veninVictim ? { venin: veninVictim.nom } : null,
         la_liste_accuses: [],
         votes: {},                    // Reset des votes pour le prochain jour
         notif_mj: null,
-        notifications_mj: [],
+        notifications_mj: veninNotif ? [veninNotif] : [],
+        venin_chevalier_actif: false,
       });
 
       // Réinitialiser les indicateurs de tour de chaque joueur
@@ -535,7 +593,7 @@ export default function MjDashboard() {
       const batch    = writeBatch(db);
 
       batch.update(doc(db, 'salons', roomId), {
-        statut: 'en_attente',
+        statut: 'SETUP',
         roles_melanges: shuffled,
         roles_dispo_comedien: salonData.roles_dispo_comedien_init || [],
         couple: [],
@@ -554,6 +612,8 @@ export default function MjDashboard() {
         notif_mj: null,
         morts_nuit: null,
         condamne_jour: null,
+        venin_chevalier_actif: false,
+        index_chevalier: null,
       });
 
       joueurs.forEach(j => {
@@ -570,6 +630,7 @@ export default function MjDashboard() {
           vies: 2,
           infection_dispo: false,
           infection_repondu: false,
+          est_infecte: false,
           tir_chasseur_fait: false,
         });
       });
@@ -581,9 +642,9 @@ export default function MjDashboard() {
   const getPlayerUrl = () => `${window.location.origin}/player/${roomId}`;
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // RENDER : Écran de configuration (avant création du salon)
+  // RENDER : Écran de configuration (avant création du salon ou après reset)
   // ═══════════════════════════════════════════════════════════════════════════
-  if (!salonData) {
+  if (!salonData || salonData.statut === 'SETUP') {
     const surplus = selectedRoles.length - nbJoueurs;
 
     return (
@@ -855,6 +916,15 @@ export default function MjDashboard() {
             <p className="text-font text-muted" style={{ marginBottom: '1rem' }}>
               Les joueurs rejoignent le salon. Une fois tout le monde prêt et les rôles distribués, lancez la partie.
             </p>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <button
+                onClick={handleAddPlayer}
+                className="btn-secondary text-font border-accent"
+                style={{ flex: 1, padding: '15px', fontSize: '1rem', display: 'flex', justifyContent: 'center', gap: '10px' }}
+              >
+                <Users size={20} /> Ajouter un joueur
+              </button>
+            </div>
             <button
               onClick={handleStartGame}
               className="btn-primary title-font glow-button"
@@ -1062,6 +1132,7 @@ export default function MjDashboard() {
               const morts = [];
               if (salonData.morts_nuit?.loups)    morts.push(salonData.morts_nuit.loups);
               if (salonData.morts_nuit?.sorciere) morts.push(salonData.morts_nuit.sorciere);
+              if (salonData.morts_nuit?.venin)    morts.push(salonData.morts_nuit.venin);
               const uniqueMorts = [...new Set(morts)];
 
               return uniqueMorts.length > 0 ? (
@@ -1283,7 +1354,7 @@ export default function MjDashboard() {
                   const roleObj    = j.role ? rolesData.find(r => r.id === j.role) : null;
                   const statutColor = j.statut_joueur === 'mort'
                     ? 'var(--danger)'
-                    : j.statut_joueur === 'infecte'
+                    : j.est_infecte === true
                       ? '#a78bfa'
                       : 'var(--success)';
                   return (
@@ -1317,7 +1388,7 @@ export default function MjDashboard() {
                           </select>
                         ) : (
                           <span style={{ color: roleObj?.color || 'var(--text-color)', fontWeight: 'bold' }}>
-                            {j.statut_joueur === 'infecte'
+                            {j.est_infecte === true
                               ? `${roleObj?.name || j.role} (Infecté)`
                               : roleObj?.name || 'Caché'}
                           </span>

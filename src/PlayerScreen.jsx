@@ -126,7 +126,7 @@ export default function PlayerScreen() {
       const p1 = joueurs.find(j => j.id === salonData.couple[0]);
       const p2 = joueurs.find(j => j.id === salonData.couple[1]);
       if (p1?.statut_joueur === 'mort' && p2?.statut_joueur === 'mort') {
-        const isLoup = j => j?.role?.toLowerCase().includes('loup') || j?.statut_joueur === 'infecte';
+        const isLoup = j => j?.role?.toLowerCase().includes('loup') || j?.est_infecte === true;
         if (!isLoup(p1) && !isLoup(p2)) {
           updateDoc(
             doc(db, 'salons', roomId, 'joueurs', me.id),
@@ -221,7 +221,7 @@ export default function PlayerScreen() {
           const targetSnap = await transaction.get(targetRef);
 
           const vraiRoleCible   = targetSnap.data().role;
-          const statutCible     = targetSnap.data().statut_joueur;
+          const infecteCible    = targetSnap.data().est_infecte;
           const stolenRoleCheck = rolesData.find(r => r.id === vraiRoleCible);
           const isLoupFinal     = stolenRoleCheck?.name?.toLowerCase().includes('loup') || false;
 
@@ -234,7 +234,7 @@ export default function PlayerScreen() {
           });
 
           const targetUpdates = { role: 'voleur' };
-          if (isLoupFinal || statutCible === 'infecte') targetUpdates.statut_joueur = 'mort';
+          if (isLoupFinal || infecteCible === true) targetUpdates.statut_joueur = 'mort';
           transaction.update(targetRef, targetUpdates);
 
           transaction.update(doc(db, 'salons', roomId), {
@@ -440,7 +440,7 @@ export default function PlayerScreen() {
                       {j.nom}
                     </span>
                     <span style={{ color: rObj?.color || 'var(--text-muted)', fontWeight: 'bold' }}>
-                      {rObj?.name || j.role} {j.statut_joueur === 'infecte' && '(Infecté)'}
+                      {rObj?.name || j.role} {j.est_infecte === true && '(Infecté)'}
                     </span>
                   </li>
                 );
@@ -454,10 +454,10 @@ export default function PlayerScreen() {
 
   const isDead         = me.statut_joueur === 'mort';
   const allAlivePlayers = joueurs.filter(j => j.statut_joueur !== 'mort');
-  const isMeLoup       = me.role?.toLowerCase().includes('loup') || me.statut_joueur === 'infecte';
-  const loupTargets    = allAlivePlayers.filter(j => !(j.role?.toLowerCase().includes('loup') || j.statut_joueur === 'infecte'));
+  const isMeLoup       = me.role?.toLowerCase().includes('loup') || me.est_infecte === true;
+  const loupTargets    = allAlivePlayers.filter(j => !(j.role?.toLowerCase().includes('loup') || j.est_infecte === true));
   const compagnonsLoups = isMeLoup
-    ? joueurs.filter(j => (j.role?.toLowerCase().includes('loup') || j.statut_joueur === 'infecte') && j.id !== me.id && j.statut_joueur !== 'mort')
+    ? joueurs.filter(j => (j.role?.toLowerCase().includes('loup') || j.est_infecte === true) && j.id !== me.id && j.statut_joueur !== 'mort')
     : [];
   const isNightMode    = NIGHT_PHASES.includes(salonData?.statut);
 
@@ -603,14 +603,14 @@ export default function PlayerScreen() {
                     style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: isDead_j ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.04)', opacity: isDead_j ? 0.6 : 1, border: '1px solid var(--card-border)' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isDead_j ? 'var(--danger)' : j.statut_joueur === 'infecte' ? '#a78bfa' : 'var(--success)' }} />
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isDead_j ? 'var(--danger)' : j.est_infecte === true ? '#a78bfa' : 'var(--success)' }} />
                       <span style={{ fontWeight: j.id === me.id ? 'bold' : 'normal', color: 'var(--text-color)' }}>
                         {j.nom} {j.id === me.id && '(Vous)'}
                       </span>
                     </div>
                     <span style={{ color: rObj?.color || 'var(--text-muted)', fontWeight: 'bold', fontSize: '0.85rem' }}>
                       {isDead_j ? '💀' : ''} {rObj?.name || '—'}
-                      {j.statut_joueur === 'infecte' ? ' (Infecté)' : ''}
+                      {j.est_infecte === true ? ' (Infecté)' : ''}
                     </span>
                   </li>
                 );
@@ -697,7 +697,7 @@ export default function PlayerScreen() {
                 const exactRoleName = rolesData.find(r => r.id === j.role)?.name || j.role;
                 return (
                   <li key={j.id} style={{ color: '#fca5a5', marginTop: '4px' }}>
-                    {j.nom} ({exactRoleName}{j.statut_joueur === 'infecte' ? ' - Infecté' : ''})
+                    {j.nom} ({exactRoleName}{j.est_infecte === true ? ' - Infecté' : ''})
                   </li>
                 );
               })}
