@@ -185,6 +185,7 @@ export default function PlayerScreen() {
       await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
         carte_choisie: index,
         role: assignedRole,
+        vies: assignedRole === 'ancien' ? 2 : 1,
         infection_dispo: assignedRole === 'infect-pere-des-loups',
       });
     } catch (err) { alert('Erreur.'); }
@@ -316,6 +317,24 @@ export default function PlayerScreen() {
   }
 
   const myRoleData = me.role ? rolesData.find(r => r.id === me.role) : null;
+
+  // ─── Phase de configuration initiale (SETUP) ──────────────────────────────
+  if (salonData.statut === 'SETUP') {
+    return (
+      <div className="player-screen">
+        <ThemeToggle />
+        <div className="player-content">
+          <div>
+            <span className="room-badge">SALON {roomId}</span>
+            <h1 className="player-title">Bienvenue, <strong>{me.nom}</strong></h1>
+            <p className="text-font text-muted" style={{ marginTop: '1rem', fontSize: '1.1rem', lineHeight: '1.5' }}>
+              ⏳ Le Maître du Jeu prépare la table. Veuillez attendre qu'il vous attribue votre rôle secret...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ─── Phase d'attente / Choix des cartes ───────────────────────────────────
   if (salonData.statut === 'en_attente') {
@@ -525,7 +544,18 @@ export default function PlayerScreen() {
 
   // ─── Early return : Mode Fantôme (joueur mort hors Chasseur) ─────────────
   if (isDead) {
-    const phaseLabel = salonData.statut.replace(/_/g, ' ').toUpperCase();
+  const NIGHT_PHASE_LABELS = {
+    nuit_cupidon: "🏹 Cupidon lie deux âmes...",
+    nuit_voleur: "🦹 Le Voleur rôde en silence...",
+    nuit_salvateur: "🛡️ Le Salvateur protège le village...",
+    nuit_voyante: "🔮 La Voyante observe les astres...",
+    nuit_loups: "🐺 La meute de loups chasse...",
+    nuit_sorciere: "🧪 La Sorcière prépare ses potions..."
+  };
+
+  const phaseLabel = isNightMode 
+    ? (NIGHT_PHASE_LABELS[salonData.statut] || salonData.statut.replace(/_/g, ' ').toUpperCase())
+    : salonData.statut.replace(/_/g, ' ').toUpperCase();
     return (
       <div className="player-screen">
         <ThemeToggle />
@@ -641,15 +671,22 @@ export default function PlayerScreen() {
           <div>
             <h1 className="player-title" style={{ fontSize: '1.8rem', margin: 0, color: 'var(--text-color)' }}>{me.nom}</h1>
             <p className="text-font" style={{ color: isNightMode ? '#f8fafc' : '#111827', fontWeight: 'bold', display: 'inline-block', marginTop: '6px' }}>
-              {showRole ? (myRoleData?.name || 'Rôle Inconnu') : 'Rôle Masqué'}
+              {showRole ? (myRoleData?.name || 'Rôle Inconnu') : '🔒 Secrets Masqués'}
             </p>
           </div>
           <button
             onClick={() => setShowRole(!showRole)}
             className="btn-secondary text-font"
-            style={{ padding: '8px 12px', fontSize: '0.9rem', borderColor: '#6b7280', color: 'var(--text-color)' }}
+            style={{
+              padding: '8px 12px',
+              fontSize: '0.85rem',
+              borderColor: showRole ? '#ec4899' : 'var(--primary)',
+              color: showRole ? '#ec4899' : 'var(--text-color)',
+              fontWeight: 'bold',
+              transition: 'all 0.2s ease',
+            }}
           >
-            {showRole ? 'Cacher' : 'Voir Rôle'}
+            {showRole ? '🙈 Masquer les Secrets' : '🔍 Révéler mes Secrets'}
           </button>
         </div>
 
@@ -674,41 +711,175 @@ export default function PlayerScreen() {
           );
         })()}
 
-        {/* Couple */}
-        {salonData?.couple?.includes(me.id) && (() => {
-          const partnerId = salonData.couple.find(id => id !== me.id);
-          const partner   = joueurs.find(j => j.id === partnerId);
-          if (!partner) return null;
+        {/* ── SECRETS DU JOUEUR : affichés uniquement si showRole ──────────────── */}
+        {showRole && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
+
+            {/* Encart Couple (Cupidon) */}
+            {salonData?.couple?.includes(me.id) && (() => {
+              const partnerId  = salonData.couple.find(id => id !== me.id);
+              const partner    = joueurs.find(j => j.id === partnerId);
+              if (!partner) return null;
+              const partnerRole = rolesData.find(r => r.id === partner.role);
+              const isPartnerDead = partner.statut_joueur === 'mort';
+              return (
+                <div style={{
+                  padding: '1rem 1.25rem',
+                  background: 'rgba(236,72,153,0.12)',
+                  border: '2px solid #ec4899',
+                  borderRadius: '14px',
+                  boxShadow: '0 0 18px rgba(236,72,153,0.18)',
+                }}
+                >
+                  <p className="title-font" style={{ margin: '0 0 6px', color: '#ec4899', fontSize: '1rem', letterSpacing: '0.04em' }}>
+                    ❤️ Votre Âme Sœur
+                  </p>
+                  <p className="text-font" style={{ margin: 0, fontSize: '1rem', fontWeight: 'bold', color: isPartnerDead ? 'var(--text-muted)' : '#f9a8d4', textDecoration: isPartnerDead ? 'line-through' : 'none' }}>
+                    {partner.nom}
+                  </p>
+                  <p className="text-font" style={{ margin: '4px 0 0', fontSize: '0.88rem', color: partnerRole?.color || '#f9a8d4' }}>
+                    Rôle secret : <strong>{partnerRole?.name || partner.role || 'Inconnu'}</strong>
+                    {partner.est_infecte === true && <span style={{ color: '#a78bfa', marginLeft: '6px' }}>— ☣️ Infecté</span>}
+                  </p>
+                  {isPartnerDead && (
+                    <p className="text-font" style={{ margin: '6px 0 0', fontSize: '0.82rem', color: '#ef4444' }}>
+                      💔 Votre âme sœur est morte. Si vous êtes du village, vous mourrez aussi.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Statut Infecté */}
+            {me.est_infecte === true && (
+              <div style={{
+                padding: '1rem 1.25rem',
+                background: 'rgba(167,139,250,0.12)',
+                border: '2px solid #8b5cf6',
+                borderRadius: '14px',
+                boxShadow: '0 0 18px rgba(139,92,246,0.18)',
+              }}
+              >
+                <p className="title-font" style={{ margin: '0 0 4px', color: '#a78bfa', fontSize: '1rem' }}>
+                  ☣️ Vous avez été infecté !
+                </p>
+                <p className="text-font" style={{ margin: '0 0 8px', fontSize: '0.88rem', color: 'var(--text-muted)' }}>
+                  L'Infect Père des Loups vous a converti. Vous faites désormais partie de la meute.
+                </p>
+                {compagnonsLoups.length > 0 ? (
+                  <>
+                    <p className="text-font" style={{ margin: '0 0 4px', color: '#ef4444', fontWeight: 'bold', fontSize: '0.9rem' }}>🐺 Vos compagnons loups :
+                    </p>
+                    <ul style={{ margin: 0, padding: '0 0 0 1.2rem' }} className="text-font">
+                      {compagnonsLoups.map(j => {
+                        const rName = rolesData.find(r => r.id === j.role)?.name || j.role;
+                        return (
+                          <li key={j.id} style={{ color: '#fca5a5', marginTop: '4px', fontSize: '0.9rem' }}>
+                            {j.nom} ({rName}{j.est_infecte === true ? ' — Infecté' : ''})
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                ) : (
+                  <p className="text-font" style={{ margin: 0, color: '#ef4444', fontSize: '0.88rem' }}>🐺 Tu es seul loup en vie ce soir.</p>
+                )}
+              </div>
+            )}
+
+            {/* Compagnons loups (joueur loup non infecté) */}
+            {isMeLoup && me.est_infecte !== true && compagnonsLoups.length > 0 && (
+              <div style={{ padding: '12px 14px', background: 'rgba(239,68,68,0.1)', border: '2px solid #ef4444', borderRadius: '10px' }}>
+                <p className="text-font" style={{ margin: 0, color: '#ef4444', fontWeight: 'bold' }}>🐺 Tes compagnons loups :</p>
+                <ul style={{ margin: '6px 0 0', padding: '0 0 0 1.2rem' }} className="text-font">
+                  {compagnonsLoups.map(j => {
+                    const exactRoleName = rolesData.find(r => r.id === j.role)?.name || j.role;
+                    return (
+                      <li key={j.id} style={{ color: '#fca5a5', marginTop: '4px' }}>
+                        {j.nom} ({exactRoleName}{j.est_infecte === true ? ' — Infecté' : ''})
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+            {isMeLoup && me.est_infecte !== true && compagnonsLoups.length === 0 && (
+              <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.07)', border: '1px solid #ef444488', borderRadius: '10px' }}>
+                <p className="text-font" style={{ margin: 0, color: '#ef4444', fontSize: '0.9rem' }}>🐺 Tu es seul loup en vie ce soir.</p>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* Masque visuel quand showRole === false et que le joueur a des secrets */}
+        {!showRole && (salonData?.couple?.includes(me.id) || isMeLoup) && (
+          <div style={{
+            marginTop: '1rem',
+            padding: '10px 14px',
+            background: 'rgba(0,0,0,0.25)',
+            border: '1px dashed rgba(255,255,255,0.15)',
+            borderRadius: '10px',
+            textAlign: 'center',
+          }}>
+            <p className="text-font" style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.82rem', fontStyle: 'italic' }}>
+              🔒 Vos informations secrètes sont masquées. Cliquez sur « Révéler mes Secrets » pour les voir.
+            </p>
+          </div>
+        )}
+
+        {/* ── BANDEAU PHASE DE NUIT (visible pour tous les joueurs endormis) ──── */}
+        {isNightMode && (() => {
+          const NIGHT_PHASE_LABELS_FULL = {
+            nuit_cupidon:   { icon: '🏹', label: 'Cupidon lie deux âmes...', color: '#ec4899', bg: 'rgba(236,72,153,0.12)', border: '#ec4899' },
+            nuit_voleur:    { icon: '🦹', label: 'Le Voleur rôde en silence...', color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: '#ef4444' },
+            nuit_salvateur: { icon: '🛡️', label: 'Le Salvateur protège le village...', color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', border: '#3b82f6' },
+            nuit_voyante:   { icon: '🔮', label: 'La Voyante observe les astres...', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', border: '#a78bfa' },
+            nuit_loups:     { icon: '🐺', label: 'La meute de loups chasse...', color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: '#ef4444' },
+            nuit_sorciere:  { icon: '🧪', label: 'La Sorcière prépare ses potions...', color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)', border: '#8b5cf6' },
+          };
+          const phaseInfo = NIGHT_PHASE_LABELS_FULL[salonData.statut];
+          if (!phaseInfo) return null;
+
+          // Déterminer si CE joueur est le rôle actif (il verra son interface d'action ci-dessous)
+          const isActiveRole =
+            (salonData.statut === 'nuit_cupidon'   && me.role === 'cupidon'   && !me.pouvoir_utilise) ||
+            (salonData.statut === 'nuit_voleur'     && me.role === 'voleur'    && !me.a_vote) ||
+            (salonData.statut === 'nuit_salvateur'  && me.role === 'salvateur' && !me.a_vote) ||
+            (salonData.statut === 'nuit_voyante'    && me.role === 'voyante'   && !me.a_vote) ||
+            (salonData.statut === 'nuit_loups'      && isMeLoup                && !me.a_vote) ||
+            (salonData.statut === 'nuit_sorciere'   && me.role === 'sorciere'  && !me.a_vote_sorciere);
+
           return (
-            <div style={{ marginTop: '1rem', padding: '12px 14px', background: 'rgba(236,72,153,0.15)', border: '2px solid #ec4899', borderRadius: '10px' }}>
-              <p className="text-font" style={{ margin: 0, color: '#ec4899', fontWeight: 'bold' }}>
-                💖 En couple avec {partner.nom}
+            <div
+              style={{
+                marginTop: '1.5rem',
+                padding: '1rem 1.5rem',
+                background: phaseInfo.bg,
+                border: `2px solid ${phaseInfo.border}`,
+                borderRadius: '16px',
+                textAlign: 'center',
+                boxShadow: `0 0 24px ${phaseInfo.border}33`,
+                backdropFilter: 'blur(6px)',
+                animation: 'pulse-subtle 3s infinite',
+              }}
+            >
+              <p className="title-font" style={{ margin: 0, fontSize: '1.6rem' }}>{phaseInfo.icon}</p>
+              <p className="title-font" style={{ margin: '6px 0 2px', fontSize: '1.1rem', color: phaseInfo.color, letterSpacing: '0.03em' }}>
+                {phaseInfo.label}
               </p>
+              {isActiveRole ? (
+                <p className="text-font" style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  👇 C'est votre tour — agissez ci-dessous.
+                </p>
+              ) : (
+                <p className="text-font" style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  😴 Gardez les yeux fermés et attendez en silence.
+                </p>
+              )}
             </div>
           );
         })()}
-
-        {/* Compagnons loups */}
-        {isMeLoup && showRole && compagnonsLoups.length > 0 && (
-          <div style={{ marginTop: '1rem', padding: '12px 14px', background: 'rgba(239,68,68,0.1)', border: '2px solid #ef4444', borderRadius: '10px' }}>
-            <p className="text-font" style={{ margin: 0, color: '#ef4444', fontWeight: 'bold' }}>🐺 Tes compagnons loups :</p>
-            <ul style={{ margin: '6px 0 0', padding: '0 0 0 1.2rem' }} className="text-font">
-              {compagnonsLoups.map(j => {
-                const exactRoleName = rolesData.find(r => r.id === j.role)?.name || j.role;
-                return (
-                  <li key={j.id} style={{ color: '#fca5a5', marginTop: '4px' }}>
-                    {j.nom} ({exactRoleName}{j.est_infecte === true ? ' - Infecté' : ''})
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-        {isMeLoup && showRole && compagnonsLoups.length === 0 && (
-          <div style={{ marginTop: '1rem', padding: '10px 14px', background: 'rgba(239,68,68,0.07)', border: '1px solid #ef444488', borderRadius: '10px' }}>
-            <p className="text-font" style={{ margin: 0, color: '#ef4444', fontSize: '0.9rem' }}>🐺 Tu es seul loup en vie ce soir.</p>
-          </div>
-        )}
 
         {/* ── SECTION POUVOIRS ────────────────────────────────────────────── */}
         <div className="powers-section" style={{ marginTop: '2rem' }}>

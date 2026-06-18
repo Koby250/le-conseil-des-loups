@@ -109,7 +109,7 @@ export default function MjDashboard() {
   // ── Vérification des conditions de victoire ───────────────────────────────
   useEffect(() => {
     if (!salonData || !joueurs.length) return;
-    const isPlaying = salonData.statut !== 'en_attente' && salonData.statut !== 'fin_village' && salonData.statut !== 'fin_loups';
+    const isPlaying = salonData.statut !== 'SETUP' && salonData.statut !== 'en_attente' && salonData.statut !== 'fin_village' && salonData.statut !== 'fin_loups';
     if (!isPlaying) return;
 
     const alivePlayers = joueurs.filter(j => j.statut_joueur !== 'mort');
@@ -204,13 +204,12 @@ export default function MjDashboard() {
     }
   };
 
-  // ── Attribution manuelle d'un rôle ───────────────────────────────────────
   const assignRoleManually = async (joueurId, roleId) => {
     try {
       await updateDoc(doc(db, 'salons', roomId, 'joueurs', joueurId), {
         role: roleId,
         carte_choisie: 999,
-        vies: 2,
+        vies: roleId === 'ancien' ? 2 : 1,
         infection_dispo: roleId === 'infect-pere-des-loups',
         infection_repondu: false,
       });
@@ -614,6 +613,7 @@ export default function MjDashboard() {
         condamne_jour: null,
         venin_chevalier_actif: false,
         index_chevalier: null,
+        etape_activation: 1,
       });
 
       joueurs.forEach(j => {
@@ -627,7 +627,7 @@ export default function MjDashboard() {
           vote_jour: null,
           illusion_dispo: true,
           dernier_protege: null,
-          vies: 2,
+          vies: 1,
           infection_dispo: false,
           infection_repondu: false,
           est_infecte: false,
@@ -719,7 +719,7 @@ export default function MjDashboard() {
           {/* ── Sélection des rôles ────────────────────────────────────── */}
           <div style={{ marginBottom: '2rem', borderTop: '1px solid var(--card-border)', paddingTop: '1.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 className="title-font" style={{ fontSize: '1.2rem' }}>Sélection des rôles</h3>
+              <h3 className="title-font" style={{ fontSize: '1.2rem', margin: 0 }}>Sélection des rôles</h3>
               <div
                 className="role-counter text-font text-success"
                 style={{ fontWeight: 'bold', padding: '0.3rem 0.8rem', background: 'var(--input-bg)', borderRadius: '1rem' }}
@@ -1315,6 +1315,16 @@ export default function MjDashboard() {
             <div className="qr-url text-font" style={{ marginTop: '1rem', wordBreak: 'break-all' }}>
               {getPlayerUrl()}
             </div>
+            
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <button
+                onClick={handleAddPlayer}
+                className="btn-secondary text-font border-accent"
+                style={{ flex: 1, padding: '15px', fontSize: '1rem', display: 'flex', justifyContent: 'center', gap: '10px' }}
+              >
+                <Users size={20} /> Ajouter un joueur
+              </button>
+            </div>
           </div>
         )}
 
@@ -1337,9 +1347,29 @@ export default function MjDashboard() {
           className="players-table-panel glass-panel"
           style={{ gridColumn: (!isGameRunning && joueurs.length < salonData.roles_selectionnes.length) ? 'auto' : '1 / -1' }}
         >
-          <h2 className="title-font" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-color)' }}>
-            <Users size={20} /> Joueurs ({joueurs.filter(j => j.statut_joueur !== 'mort').length} en vie / {joueurs.length} total)
-          </h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 className="title-font" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-color)', margin: 0 }}>
+              <Users size={20} /> Joueurs ({joueurs.filter(j => j.statut_joueur !== 'mort').length} en vie / {joueurs.length} total)
+            </h2>
+            {(salonData.statut === 'en_attente' || salonData.statut === 'SETUP') && (
+              <select
+                onChange={async (e) => {
+                  if (!e.target.value) return;
+                  try {
+                    await updateDoc(doc(db, 'salons', roomId), { roles_selectionnes: arrayUnion(e.target.value) });
+                    e.target.value = "";
+                  } catch (error) { console.error(error); }
+                }}
+                className="btn-secondary text-font"
+                style={{ padding: '8px', fontSize: '0.9rem', borderRadius: '8px', border: '1px solid var(--primary)', maxWidth: '200px' }}
+              >
+                <option value="">➕ Ajouter un rôle à la partie...</option>
+                {rolesData.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
           <div style={{ marginTop: '1rem', overflowX: 'auto' }}>
             <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }} className="text-font">
               <thead>
