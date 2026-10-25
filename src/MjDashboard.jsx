@@ -814,7 +814,7 @@ export default function MjDashboard() {
                 return (
                   <div key={role.id} className="role-selector-item glass-panel">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
-                      <div className="role-color-dot" style={{ backgroundColor: role.color }} />
+                      <span style={{ fontSize: '1.1rem' }}>{role.icon || '🎭'}</span>
                       <span className="text-font" style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-color)' }}>
                         {role.name}
                       </span>
@@ -842,7 +842,7 @@ export default function MjDashboard() {
                   return (
                     <div key={role.id} className="role-selector-item glass-panel">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
-                        <div className="role-color-dot" style={{ backgroundColor: role.color }} />
+                        <span style={{ fontSize: '1.1rem' }}>{role.icon || '🎭'}</span>
                         <span className="text-font" style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-color)' }}>
                           {role.name}
                         </span>

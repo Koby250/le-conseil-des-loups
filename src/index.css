@@ -207,21 +207,21 @@ body.theme-jour {
 .player-title strong { color: var(--text-color); font-size: 2rem; margin-left: 0.5rem; font-family: 'Cinzel', serif; }
 
 /* 3D Flip Card */
-.perspective-container { perspective: 1200px; width: 100%; aspect-ratio: 2/3; margin: 0 auto; margin-top: 1.5rem; }
+.perspective-container { perspective: 1200px; width: 100%; max-width: 360px; aspect-ratio: 2/3.1; margin: 0 auto; margin-top: 1.5rem; }
 .flip-card { width: 100%; height: 100%; position: relative; transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275); transform-style: preserve-3d; cursor: pointer; border: none; background: transparent; outline: none; }
 .flip-card.flipped { transform: rotateY(180deg); }
-.flip-card-front, .flip-card-back { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 1.5rem; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 2rem; }
+.flip-card-front, .flip-card-back { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 1.5rem; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 1.5rem; }
 .flip-card-front { background: var(--card-bg); border: 2px solid var(--card-border); box-shadow: 0 15px 35px rgba(0,0,0,0.15); backdrop-filter: blur(10px); }
 .flip-card-front p { color: var(--text-color); font-weight: 800; font-family: 'Cinzel', serif; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 1.5rem; }
 .flip-card-front small { color: var(--text-muted); font-size: 0.8rem; margin-top: 1rem; font-weight: 500; }
 
 .flip-card-back { transform: rotateY(180deg); background: var(--card-bg); align-items: flex-start; text-align: left; overflow: hidden; border-width: 3px; border-style: solid; }
-.card-gradient { position: absolute; top: 0; left: 0; width: 100%; height: 50%; z-index: 1; opacity: 0.5; }
+.card-gradient { position: absolute; top: 0; left: 0; width: 100%; height: 40%; z-index: 1; opacity: 0.4; }
 .card-inner { position: relative; z-index: 2; display: flex; flex-direction: column; height: 100%; width: 100%; }
-.role-name { font-size: 2.2rem; font-weight: 900; margin-bottom: 0.5rem; font-family: 'Cinzel', serif; text-shadow: 0 2px 10px rgba(0,0,0,0.3); line-height: 1.1; }
-.role-divider { height: 3px; border-radius: 2px; width: 4rem; margin-bottom: auto; }
-.role-desc { background: rgba(0,0,0,0.3); padding: 1.5rem; border-radius: 1rem; font-size: 1.05rem; line-height: 1.6; color: white; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1); font-weight: 500; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
-:root:not(.dark) .role-desc { background: rgba(255,255,255,0.7); color: var(--text-color); text-shadow: none; border-color: rgba(0,0,0,0.05); }
+.role-name { font-size: 1.6rem; font-weight: 900; margin-bottom: 0.25rem; font-family: 'Cinzel', serif; text-shadow: 0 2px 10px rgba(0,0,0,0.3); line-height: 1.15; }
+.role-divider { height: 3px; border-radius: 2px; width: 3.5rem; margin-bottom: 0.75rem; }
+.role-desc { background: rgba(0,0,0,0.35); padding: 1rem; border-radius: 0.85rem; font-size: 0.88rem; line-height: 1.45; color: white; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1); font-weight: 500; text-shadow: 0 1px 2px rgba(0,0,0,0.5); overflow-y: auto; max-height: calc(100% - 90px); }
+:root:not(.dark) .role-desc { background: rgba(255,255,255,0.75); color: var(--text-color); text-shadow: none; border-color: rgba(0,0,0,0.08); }
 
 .warning-text { display: flex; align-items: flex-start; justify-content: center; gap: 0.75rem; color: var(--text-muted); font-size: 0.85rem; margin-top: 2.5rem; text-align: left; font-weight: 600; }
 .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }

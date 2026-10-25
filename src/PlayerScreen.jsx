@@ -415,9 +415,62 @@ export default function PlayerScreen() {
               >
                 <div className="card-gradient" style={{ background: `linear-gradient(to bottom, ${myRoleData?.color}30, transparent)` }} />
                 <div className="card-inner">
+                  {/* Badge de Camp & Icône */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '6px' }}>
+                    <span
+                      className="text-font"
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        fontSize: '0.72rem',
+                        fontWeight: 'bold',
+                        letterSpacing: '0.04em',
+                        textTransform: 'uppercase',
+                        background: myRoleData?.camp === 'loups' ? 'rgba(220,38,38,0.25)' : myRoleData?.camp === 'village' ? 'rgba(22,163,74,0.25)' : 'rgba(168,85,247,0.25)',
+                        color: myRoleData?.camp === 'loups' ? '#fca5a5' : myRoleData?.camp === 'village' ? '#86efac' : '#d8b4fe',
+                        border: `1px solid ${myRoleData?.color || 'var(--card-border)'}`,
+                      }}
+                    >
+                      {myRoleData?.campLabel || 'Rôle Secret'}
+                    </span>
+                    <span style={{ fontSize: '1.6rem' }}>{myRoleData?.icon || '🎭'}</span>
+                  </div>
+
                   <h2 className="role-name" style={{ color: myRoleData?.color }}>{myRoleData?.name}</h2>
                   <div className="role-divider" style={{ backgroundColor: myRoleData?.color }} />
-                  <div className="role-desc">{myRoleData?.description}</div>
+
+                  <div className="role-desc">
+                    {myRoleData?.objective && (
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: '#fbbf24', fontSize: '0.85rem', display: 'block', marginBottom: '2px' }}>
+                          🎯 Votre Objectif :
+                        </strong>
+                        <p style={{ margin: 0, fontSize: '0.84rem', color: '#f8fafc', lineHeight: 1.35 }}>
+                          {myRoleData.objective}
+                        </p>
+                      </div>
+                    )}
+                    {myRoleData?.power && (
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: myRoleData?.color || '#38bdf8', fontSize: '0.85rem', display: 'block', marginBottom: '2px' }}>
+                          ⚡ Votre Pouvoir :
+                        </strong>
+                        <p style={{ margin: 0, fontSize: '0.84rem', color: '#f8fafc', lineHeight: 1.35 }}>
+                          {myRoleData.power}
+                        </p>
+                      </div>
+                    )}
+                    {myRoleData?.advice && (
+                      <div style={{ background: 'rgba(255,255,255,0.08)', padding: '6px 8px', borderRadius: '6px', borderLeft: `3px solid ${myRoleData?.color || '#94a3b8'}` }}>
+                        <p style={{ margin: 0, fontSize: '0.78rem', color: '#cbd5e1', lineHeight: 1.3 }}>
+                          💡 <em>{myRoleData.advice}</em>
+                        </p>
+                      </div>
+                    )}
+                    {!myRoleData?.power && !myRoleData?.objective && (
+                      <p style={{ margin: 0 }}>{myRoleData?.description}</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </button>
@@ -714,6 +767,52 @@ export default function PlayerScreen() {
         {/* ── SECRETS DU JOUEUR : affichés uniquement si showRole ──────────────── */}
         {showRole && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
+
+            {/* Fiche récapitulative du rôle */}
+            <div style={{
+              padding: '1rem 1.25rem',
+              background: 'rgba(15,23,42,0.7)',
+              border: `2px solid ${myRoleData?.color || 'var(--card-border)'}`,
+              borderRadius: '14px',
+              boxShadow: `0 0 20px ${myRoleData?.color}33`,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="title-font" style={{ color: myRoleData?.color || 'var(--primary)', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                  {myRoleData?.icon} {myRoleData?.name}
+                </span>
+                <span className="text-font" style={{
+                  fontSize: '0.75rem',
+                  padding: '3px 8px',
+                  borderRadius: '12px',
+                  fontWeight: 'bold',
+                  background: myRoleData?.camp === 'loups' ? 'rgba(220,38,38,0.2)' : myRoleData?.camp === 'village' ? 'rgba(22,163,74,0.2)' : 'rgba(168,85,247,0.2)',
+                  color: myRoleData?.camp === 'loups' ? '#fca5a5' : myRoleData?.camp === 'village' ? '#86efac' : '#d8b4fe',
+                  border: `1px solid ${myRoleData?.color || 'var(--card-border)'}`,
+                }}>
+                  {myRoleData?.campLabel}
+                </span>
+              </div>
+              {myRoleData?.objective && (
+                <p className="text-font" style={{ margin: 0, fontSize: '0.88rem', color: '#e2e8f0', lineHeight: 1.4 }}>
+                  <strong style={{ color: '#fbbf24' }}>🎯 Objectif :</strong> {myRoleData.objective}
+                </p>
+              )}
+              {myRoleData?.power && (
+                <p className="text-font" style={{ margin: 0, fontSize: '0.88rem', color: '#e2e8f0', lineHeight: 1.4 }}>
+                  <strong style={{ color: myRoleData?.color || '#38bdf8' }}>⚡ Pouvoir :</strong> {myRoleData.power}
+                </p>
+              )}
+              {myRoleData?.advice && (
+                <div style={{ background: 'rgba(255,255,255,0.06)', padding: '6px 8px', borderRadius: '6px', borderLeft: `3px solid ${myRoleData?.color || '#94a3b8'}`, marginTop: '2px' }}>
+                  <p className="text-font" style={{ margin: 0, fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.35 }}>
+                    💡 <em>{myRoleData.advice}</em>
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* Encart Couple (Cupidon) */}
             {salonData?.couple?.includes(me.id) && (() => {
