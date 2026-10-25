@@ -11,8 +11,265 @@ import { rolesData } from './rolesData';
 import {
   Users, RefreshCw, Eye, Settings, Play,
   Link as LinkIcon, Info, ChevronRight, Bell,
+  BookOpen, X, Search,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
+
+// ─── Modals Grimoire & Fiche de Rôle ─────────────────────────────────────────
+
+function RoleDetailsModal({ role, onClose }) {
+  if (!role) return null;
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 9999 }}>
+      <div
+        className="modal-content glass-panel"
+        onClick={e => e.stopPropagation()}
+        style={{
+          maxWidth: '560px',
+          width: '92%',
+          maxHeight: '85vh',
+          overflowY: 'auto',
+          border: `2px solid ${role.color || 'var(--primary)'}`,
+          borderRadius: '16px',
+          padding: '1.5rem',
+          boxShadow: `0 10px 40px ${role.color || 'rgba(0,0,0,0.5)'}40`,
+        }}
+      >
+        {/* Entête */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '2.4rem' }}>{role.icon || '🎭'}</span>
+            <div>
+              <h2 className="title-font" style={{ color: role.color || 'var(--text-color)', margin: 0, fontSize: '1.6rem' }}>
+                {role.name}
+              </h2>
+              <span
+                className="text-font"
+                style={{
+                  display: 'inline-block',
+                  marginTop: '4px',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontSize: '0.75rem',
+                  fontWeight: 'bold',
+                  background: role.camp === 'loups' ? 'rgba(220,38,38,0.2)' : role.camp === 'village' ? 'rgba(22,163,74,0.2)' : 'rgba(168,85,247,0.2)',
+                  color: role.camp === 'loups' ? '#fca5a5' : role.camp === 'village' ? '#86efac' : '#d8b4fe',
+                  border: `1px solid ${role.color || 'var(--card-border)'}`,
+                }}
+              >
+                {role.campLabel || 'Rôle'}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid var(--card-border)',
+              color: 'var(--text-color)',
+              borderRadius: '50%',
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Objectif & Pouvoir */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '1.2rem' }}>
+          {role.objective && (
+            <div style={{ background: 'var(--input-bg)', padding: '10px 12px', borderRadius: '10px', border: '1px solid var(--card-border)' }}>
+              <p className="text-font" style={{ margin: 0, fontSize: '0.9rem', color: '#e2e8f0', lineHeight: 1.4 }}>
+                <strong style={{ color: '#fbbf24' }}>🎯 Objectif du rôle :</strong> {role.objective}
+              </p>
+            </div>
+          )}
+          {role.power && (
+            <div style={{ background: 'var(--input-bg)', padding: '10px 12px', borderRadius: '10px', border: '1px solid var(--card-border)' }}>
+              <p className="text-font" style={{ margin: 0, fontSize: '0.9rem', color: '#e2e8f0', lineHeight: 1.4 }}>
+                <strong style={{ color: role.color || '#38bdf8' }}>⚡ Pouvoir :</strong> {role.power}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Script d'animation pour partie physique (Yeux fermés) */}
+        <div style={{
+          background: 'rgba(139,92,246,0.14)',
+          border: '2px solid #8b5cf6',
+          borderRadius: '12px',
+          padding: '1.1rem',
+          marginBottom: '1rem',
+          boxShadow: '0 0 15px rgba(139,92,246,0.15)',
+        }}>
+          <p className="title-font" style={{ color: '#c4b5fd', margin: '0 0 8px', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            🎙️ Animation MJ — Partie physique (Yeux fermés)
+          </p>
+          <p className="text-font" style={{ margin: 0, fontSize: '0.88rem', color: '#f8fafc', lineHeight: 1.55 }}>
+            {role.mjScript || "Ce rôle agit selon les règles de son camp pendant les phases de jour ou de nuit."}
+          </p>
+        </div>
+
+        {/* Règle & Conseil */}
+        {role.advice && (
+          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '8px 12px', borderRadius: '8px', borderLeft: `3px solid ${role.color || '#94a3b8'}` }}>
+            <p className="text-font" style={{ margin: 0, fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.35 }}>
+              💡 <strong>Règle / Conseil :</strong> {role.advice}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GrimoireModal({ isOpen, onClose, onSelectRole, activeRoles, allRoles }) {
+  const [tab, setTab] = useState('active');
+  const [search, setSearch] = useState('');
+
+  if (!isOpen) return null;
+
+  const currentList = tab === 'active' && activeRoles.length > 0 ? activeRoles : allRoles;
+  const filtered = currentList.filter(r => {
+    if (!search.trim()) return true;
+    const term = search.toLowerCase();
+    return r.name.toLowerCase().includes(term) || r.campLabel?.toLowerCase().includes(term);
+  });
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 9998 }}>
+      <div
+        className="modal-content glass-panel"
+        onClick={e => e.stopPropagation()}
+        style={{
+          maxWidth: '680px',
+          width: '95%',
+          maxHeight: '88vh',
+          overflowY: 'auto',
+          borderRadius: '16px',
+          padding: '1.5rem',
+          border: '2px solid var(--primary)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <h2 className="title-font" style={{ color: 'var(--text-color)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.4rem' }}>
+            <BookOpen size={24} style={{ color: 'var(--primary)' }} /> Grimoire des Rôles (Guide MJ)
+          </h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid var(--card-border)',
+              color: 'var(--text-color)',
+              borderRadius: '50%',
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <p className="text-font text-muted" style={{ fontSize: '0.85rem', marginBottom: '1.2rem', lineHeight: 1.4 }}>
+          Idéal pour les parties réelles autour d'une table : cliquez sur n'importe quel rôle pour afficher sa fiche complète et le <strong>script exact à prononcer à haute voix les yeux fermés</strong>.
+        </p>
+
+        {/* Onglets + Recherche */}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '1.2rem' }}>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              onClick={() => setTab('active')}
+              className={`btn-secondary text-font ${tab === 'active' ? 'glow-button' : ''}`}
+              style={{
+                padding: '6px 12px',
+                fontSize: '0.82rem',
+                borderColor: tab === 'active' ? 'var(--primary)' : 'var(--card-border)',
+                background: tab === 'active' ? 'var(--primary)' : '',
+                color: tab === 'active' ? '#000' : 'var(--text-color)',
+                fontWeight: 'bold',
+              }}
+            >
+              🎭 Rôles en jeu ({activeRoles.length})
+            </button>
+            <button
+              onClick={() => setTab('all')}
+              className={`btn-secondary text-font ${tab === 'all' ? 'glow-button' : ''}`}
+              style={{
+                padding: '6px 12px',
+                fontSize: '0.82rem',
+                borderColor: tab === 'all' ? 'var(--primary)' : 'var(--card-border)',
+                background: tab === 'all' ? 'var(--primary)' : '',
+                color: tab === 'all' ? '#000' : 'var(--text-color)',
+                fontWeight: 'bold',
+              }}
+            >
+              📚 Tous les rôles ({allRoles.length})
+            </button>
+          </div>
+
+          <div style={{ flex: 1, minWidth: '180px', position: 'relative' }}>
+            <input
+              type="text"
+              placeholder="Chercher un rôle..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '6px 10px 6px 30px',
+                background: 'var(--input-bg)',
+                border: '1px solid var(--card-border)',
+                borderRadius: '8px',
+                color: 'var(--text-color)',
+                fontSize: '0.85rem',
+              }}
+            />
+            <Search size={15} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          </div>
+        </div>
+
+        {/* Grille des rôles */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '10px' }}>
+          {filtered.map(r => (
+            <div
+              key={r.id}
+              onClick={() => onSelectRole(r)}
+              className="glass-panel"
+              style={{
+                padding: '10px 12px',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                border: `1px solid ${r.color}66`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                transition: 'all 0.2s',
+              }}
+            >
+              <span style={{ fontSize: '1.4rem' }}>{r.icon || '🎭'}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p className="text-font" style={{ margin: 0, fontWeight: 'bold', fontSize: '0.88rem', color: r.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {r.name}
+                </p>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  {r.campLabel}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
 
@@ -88,6 +345,15 @@ export default function MjDashboard() {
   const [distributionMode, setDistributionMode] = useState('aleatoire');
   const [nbJoueurs, setNbJoueurs]             = useState(6);
   const [isGenerating, setIsGenerating]       = useState(false);
+
+  // ── Modals Grimoire & Fiches Rôles pour le MJ ─────────────────────────────
+  const [inspectRole, setInspectRole]         = useState(null);
+  const [showGrimoire, setShowGrimoire]       = useState(false);
+
+  const activeRoleIds = salonData?.roles_selectionnes || selectedRoles || [];
+  const uniqueActiveRoles = Array.from(new Set(activeRoleIds))
+    .map(id => rolesData.find(r => r.id === id))
+    .filter(Boolean);
 
   // ── Abonnements Firestore ─────────────────────────────────────────────────
   useEffect(() => {
@@ -659,6 +925,16 @@ export default function MjDashboard() {
               Nouveau salon : <span className="room-id glow-text">{roomId}</span>
             </p>
           </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowGrimoire(true)}
+              className="btn-secondary text-font border-accent"
+              style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 14px', fontSize: '0.9rem' }}
+            >
+              <BookOpen size={18} style={{ color: 'var(--primary)' }} /> Grimoire des Rôles
+            </button>
+          </div>
         </header>
 
         <div className="config-box glass-panel">
@@ -873,6 +1149,16 @@ export default function MjDashboard() {
             Ouvrir le salon
           </button>
         </div>
+
+        {/* Modals Guide & Fiche pour le MJ */}
+        <RoleDetailsModal role={inspectRole} onClose={() => setInspectRole(null)} />
+        <GrimoireModal
+          isOpen={showGrimoire}
+          onClose={() => setShowGrimoire(false)}
+          onSelectRole={role => setInspectRole(role)}
+          activeRoles={uniqueActiveRoles}
+          allRoles={rolesData}
+        />
       </div>
     );
   }
@@ -924,11 +1210,19 @@ export default function MjDashboard() {
             </strong>
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', gap: '10px', flexDirection: 'row', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setShowGrimoire(true)}
+            className="btn-secondary text-font border-accent"
+            style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 14px', fontSize: '0.9rem' }}
+          >
+            <BookOpen size={18} style={{ color: 'var(--primary)' }} /> Grimoire des Rôles
+          </button>
           <button
             onClick={handleResetGame}
             className="btn-secondary text-font border-accent"
-            style={{ display: 'flex', gap: '8px', alignItems: 'center' }}
+            style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 14px', fontSize: '0.9rem' }}
           >
             <RefreshCw size={18} /> Réinitialiser
           </button>
@@ -1411,15 +1705,23 @@ export default function MjDashboard() {
 
         {/* Guide MJ (partie en cours) */}
         {isGameRunning && (
-          <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', padding: '2rem' }}>
-            <h2 className="title-font" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-color)', marginBottom: '1rem' }}>
-              <Info size={20} /> Guide pour le MJ
+          <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', padding: '1.5rem' }}>
+            <h2 className="title-font" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-color)', marginBottom: '0.75rem', fontSize: '1.2rem' }}>
+              <Info size={20} style={{ color: 'var(--primary)' }} /> Guide d'animation pour le MJ
             </h2>
-            <p className="text-font text-muted" style={{ lineHeight: 1.7 }}>
-              Vous êtes en phase : <strong style={{ color: 'var(--primary)' }}>{salonData.statut}</strong>.<br /><br />
-              Demandez à tous les joueurs de regarder leur téléphone. Appelez le rôle concerné et suivez les
-              instructions à l'écran. Cliquez sur <em>Séquence Suivante</em> pour avancer.
-            </p>
+            <div className="text-font text-muted" style={{ lineHeight: 1.6, fontSize: '0.9rem' }}>
+              <p style={{ margin: '0 0 8px' }}>
+                Phase actuelle : <strong style={{ color: 'var(--primary)' }}>{salonData.statut.replace(/_/g, ' ').toUpperCase()}</strong>.
+              </p>
+              <div style={{ background: 'var(--input-bg)', padding: '10px 12px', borderRadius: '8px', borderLeft: '3px solid var(--primary)', marginBottom: '8px' }}>
+                <p style={{ margin: 0, color: 'var(--text-color)' }}>
+                  🎙️ <strong>Partie physique autour d'une table (Yeux fermés) :</strong> Cliquez sur <strong>« ℹ️ Fiche »</strong> à côté d'un joueur dans le tableau pour lire le script exact à voix haute et animer son pouvoir en silence !
+                </p>
+              </div>
+              <p style={{ margin: 0 }}>
+                📱 <strong>Partie 100% smartphone :</strong> Demandez aux joueurs de suivre les instructions sur leur téléphone et cliquez sur <em>Séquence Suivante</em> pour avancer.
+              </p>
+            </div>
           </div>
         )}
 
@@ -1485,24 +1787,74 @@ export default function MjDashboard() {
                       </td>
                       <td style={{ padding: '10px 5px' }}>
                         {salonData.statut === 'en_attente' && salonData.distribution_mode === 'manuelle' ? (
-                          <select
-                            value={j.role || ''}
-                            onChange={e => assignRoleManually(j.id, e.target.value)}
-                            style={{ background: 'var(--input-bg)', color: 'var(--text-color)', padding: '5px', borderRadius: '5px', border: '1px solid var(--card-border)' }}
-                          >
-                            <option value="">Sélectionner...</option>
-                            {/* FILTRAGE : seuls les rôles sélectionnés lors de la configuration */}
-                            {rolesData
-                              .filter(r => (salonData.roles_selectionnes || []).includes(r.id))
-                              .map(r => <option key={r.id} value={r.id}>{r.name}</option>)
-                            }
-                          </select>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <select
+                              value={j.role || ''}
+                              onChange={e => assignRoleManually(j.id, e.target.value)}
+                              style={{ background: 'var(--input-bg)', color: 'var(--text-color)', padding: '5px', borderRadius: '5px', border: '1px solid var(--card-border)' }}
+                            >
+                              <option value="">Sélectionner...</option>
+                              {/* FILTRAGE : seuls les rôles sélectionnés lors de la configuration */}
+                              {rolesData
+                                .filter(r => (salonData.roles_selectionnes || []).includes(r.id))
+                                .map(r => <option key={r.id} value={r.id}>{r.name}</option>)
+                              }
+                            </select>
+                            {roleObj && (
+                              <button
+                                type="button"
+                                title="Voir l'explication et le script MJ"
+                                onClick={() => setInspectRole(roleObj)}
+                                style={{
+                                  background: 'rgba(255,255,255,0.08)',
+                                  border: '1px solid var(--card-border)',
+                                  borderRadius: '6px',
+                                  padding: '4px 8px',
+                                  cursor: 'pointer',
+                                  color: 'var(--text-color)',
+                                  fontSize: '0.75rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontWeight: '600',
+                                }}
+                              >
+                                ℹ️ Fiche
+                              </button>
+                            )}
+                          </div>
                         ) : (
-                          <span style={{ color: roleObj?.color || 'var(--text-color)', fontWeight: 'bold' }}>
-                            {j.est_infecte === true
-                              ? `${roleObj?.name || j.role} (Infecté)`
-                              : roleObj?.name || 'Caché'}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ color: roleObj?.color || 'var(--text-color)', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              {roleObj?.icon && <span>{roleObj.icon}</span>}
+                              {j.est_infecte === true
+                                ? `${roleObj?.name || j.role} (Infecté)`
+                                : roleObj?.name || 'Caché'}
+                            </span>
+                            {roleObj && (
+                              <button
+                                type="button"
+                                title="Voir l'explication et le script MJ"
+                                onClick={() => setInspectRole(roleObj)}
+                                style={{
+                                  background: 'rgba(255,255,255,0.08)',
+                                  border: '1px solid var(--card-border)',
+                                  borderRadius: '6px',
+                                  padding: '3px 8px',
+                                  cursor: 'pointer',
+                                  color: 'var(--text-color)',
+                                  fontSize: '0.75rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  transition: 'all 0.2s',
+                                  fontWeight: '600',
+                                }}
+                              >
+                                ℹ️ Fiche
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -1513,6 +1865,16 @@ export default function MjDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Modals Guide & Fiche pour le MJ */}
+      <RoleDetailsModal role={inspectRole} onClose={() => setInspectRole(null)} />
+      <GrimoireModal
+        isOpen={showGrimoire}
+        onClose={() => setShowGrimoire(false)}
+        onSelectRole={role => setInspectRole(role)}
+        activeRoles={uniqueActiveRoles}
+        allRoles={rolesData}
+      />
     </div>
   );
 }

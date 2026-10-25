@@ -10,6 +10,7 @@ export const rolesData = [
     power: "Chaque nuit, vous vous réveillez avec la meute pour désigner une victime à dévorer.",
     advice: "Le jour, participez aux débats et faites-vous passer pour un honnête villageois.",
     description: "Chaque nuit, vous vous réveillez avec les autres Loups pour dévorer un villageois. Le jour, mentez et fondez-vous dans la masse.",
+    mjScript: "« Le village s'endort, les Loups-Garous se réveillent ! » — Tous les loups ouvrent les yeux en silence, se concertent par gestes et pointent ensemble une victime du doigt. Le MJ note la cible, puis dit : « Les Loups s'endorment. »",
     image: ""
   },
   {
@@ -23,6 +24,7 @@ export const rolesData = [
     power: "Chaque nuit, vous pouvez sonder l'esprit d'un joueur pour découvrir son véritable rôle.",
     advice: "Ne révélez pas votre identité trop vite, les loups chercheront à vous éliminer en priorité.",
     description: "Chaque nuit, vous pouvez découvrir la véritable identité d'un joueur de votre choix.",
+    mjScript: "« La Voyante se réveille ! » — Elle ouvre les yeux et vous montre discrètement un joueur du doigt. Le MJ lui mime ou lui montre discrètement la carte du joueur (ou lui fait signe s'il est loup/villageois). Puis : « La Voyante s'endort. »",
     image: ""
   },
   {
@@ -36,6 +38,7 @@ export const rolesData = [
     power: "Vous avez 2 potions uniques : une de Guérison (ressuscite la victime des loups) et une de Mort (tue un joueur).",
     advice: "Vous pouvez utiliser 0, 1 ou vos 2 potions la même nuit. Chaque potion ne s'utilise qu'une fois dans la partie.",
     description: "Vous possédez 2 potions : une de guérison pour sauver la victime des loups, et une de mort pour éliminer un suspect.",
+    mjScript: "« La Sorcière se réveille ! » — Le MJ lui désigne la victime des loups en silence. Le MJ mime : « Veux-tu utiliser ta potion de vie ? » (pouce levé/baissé). Puis : « Veux-tu utiliser ta potion de mort ? » (montre du doigt ou secoue la tête). « La Sorcière s'endort. »",
     image: ""
   },
   {
@@ -49,6 +52,7 @@ export const rolesData = [
     power: "Si vous êtes tué (de nuit ou par le vote du jour), vous tirez un coup de fusil fatal sur un joueur avant d'expirer.",
     advice: "Réfléchissez bien à vos soupçons tout au long de la partie pour ne pas abattre un innocent à votre mort.",
     description: "À votre mort, vous avez le pouvoir de répliquer immédiatement en éliminant le joueur de votre choix.",
+    mjScript: "Rôle passif la nuit. Dès que le Chasseur est déclaré mort (de jour ou de nuit), annoncez : « Le Chasseur a été éliminé ! Avant de succomber, il tire une dernière balle... Qui abats-tu ? » Le joueur désigné meurt sur-le-champ.",
     image: ""
   },
   {
@@ -62,6 +66,7 @@ export const rolesData = [
     power: "Vous n'avez aucun pouvoir magique. Votre force réside dans votre perspicacité, vos déductions et votre vote.",
     advice: "Écoutez attentivement les arguments de chacun, repérez les contradictions et unissez les villageois.",
     description: "Vous n'avez aucun pouvoir magique. Votre force réside dans votre déduction et votre vote lors des débats.",
+    mjScript: "Dort toute la nuit. Ne l'appelez jamais la nuit. Le jour, il débat et vote activement. S'il n'y a plus de loups en vie, les villageois ont gagné.",
     image: ""
   },
   {
@@ -75,6 +80,7 @@ export const rolesData = [
     power: "La première nuit, vous désignez deux âmes sœurs. Si l'un des amoureux meurt, l'autre meurt de chagrin instantanément.",
     advice: "Si les deux amoureux sont de camps opposés (Villageois + Loup), leur seul but devient d'éliminer tous les autres joueurs !",
     description: "La première nuit, vous désignez 2 amoureux. Si l'un meurt, l'autre meurt immédiatement de chagrin.",
+    mjScript: "Nuit 1 uniquement : « Cupidon se réveille ! » — Il vous désigne 2 joueurs du doigt. « Cupidon s'endort. » Le MJ fait discrètement le tour de la table et touche l'épaule des deux amoureux. Puis : « Les amoureux ouvrent discrètement les yeux et se reconnaissent... Les amoureux s'endorment. »",
     image: ""
   },
   {
@@ -88,6 +94,7 @@ export const rolesData = [
     power: "La nuit, pendant que les Loups-Garous choisissent leur victime, vous pouvez entrouvrir discrètement les yeux.",
     advice: "Attention : si un loup vous surprend en train de regarder, vous serez immédiatement dévorée !",
     description: "Pendant que les loups dévorent leur victime la nuit, vous pouvez entrouvrir les yeux pour les espionner.",
+    mjScript: "Ne JAMAIS l'appeler à haute voix ! Pendant l'appel des loups, elle a le droit d'entrouvrir discrètement les yeux. Si les loups la prennent en flagrant délit, ils peuvent la pointer pour qu'elle meure à la place ou en plus de la victime.",
     image: ""
   },
   {
@@ -101,6 +108,7 @@ export const rolesData = [
     power: "La première nuit, vous regardez les 2 cartes non distribuées et vous pouvez en échanger une contre la vôtre.",
     advice: "Si les 2 cartes au centre sont des Loups-Garous, vous êtes obligé d'en prendre une et de devenir Loup.",
     description: "La première nuit, vous découvrez 2 cartes non attribuées et pouvez échanger votre rôle contre l'une d'elles.",
+    mjScript: "Nuit 1 uniquement (tout premier rôle appelé) : « Le Voleur se réveille ! » — Le MJ lui présente discrètement les 2 cartes non attribuées. Le Voleur peut échanger sa carte (obligatoire s'il y a 2 loups). « Le Voleur s'endort. »",
     image: ""
   },
   {
@@ -114,6 +122,7 @@ export const rolesData = [
     power: "Chaque nuit, vous charmez 2 nouveaux joueurs. Les charmés se reconnaissent mais continuent de jouer.",
     advice: "Vous gagnez seul instantanément dès que tous les joueurs vivants sont charmés !",
     description: "Chaque nuit, vous charmez 2 joueurs. Vous gagnez seul si tous les joueurs vivants sont charmés.",
+    mjScript: "« Le Joueur de Flûte se réveille ! » — Il désigne 2 nouveaux joueurs. « Le Joueur de Flûte s'endort. » Le MJ fait le tour et tapote délicatement la tête des charmés. Puis : « Tous les joueurs charmés ouvrent discrètement les yeux et se reconnaissent... Les charmés s'endorment. » Dès que tous les vivants sont charmés, il gagne seul.",
     image: ""
   },
   {
@@ -127,6 +136,7 @@ export const rolesData = [
     power: "Si le village vote contre vous pour vous exécuter, votre carte est révélée et vous êtes immédiatement gracié !",
     advice: "Vous restez en vie, mais en contrepartie, vous perdez définitivement votre droit de vote pour le reste de la partie.",
     description: "Si le village vote contre vous, vous êtes gracié mais perdez votre droit de vote pour le restant de la partie.",
+    mjScript: "Rôle passif la nuit. Si le village vote pour le lyncher, annoncez : « C'est l'Idiot du Village ! Le village est pris de pitié et l'épargne. » Il survit, mais annoncez clairement : « Il perd tout droit de vote pour le restant de la partie ! »",
     image: ""
   },
   {
@@ -140,6 +150,7 @@ export const rolesData = [
     power: "Vous survivez à la première attaque des loups (vous avez 2 vies face aux morsures de nuit).",
     advice: "⚠️ Si le village vous tue lors du vote, ou si la Sorcière ou le Chasseur vous abat, tous les villageois perdent leurs pouvoirs !",
     description: "Vous survivez à la 1ère attaque des loups. Si le village vous tue, tous les villageois perdent leurs pouvoirs.",
+    mjScript: "La 1ère fois que les loups le choisissent la nuit, ne le faites PAS mourir au matin (il a 2 vies). Ne donnez aucun indice aux loups. ⚠️ Si le village le tue lors du vote du jour, annoncez immédiatement : « Tous les villageois perdent leurs pouvoirs magiques jusqu'à la fin de la partie ! »",
     image: ""
   },
   {
@@ -153,6 +164,7 @@ export const rolesData = [
     power: "En cas d'égalité lors du vote du village, c'est automatiquement vous qui mourez sur l'échafaud !",
     advice: "En mourant, vous avez le privilège de désigner qui aura le droit de voter (ou pas) lors du jour suivant.",
     description: "En cas d'égalité de vote du village, vous êtes automatiquement éliminé. Vous désignez qui votera le lendemain.",
+    mjScript: "Lors d'un vote du village, en cas d'égalité stricte entre 2 joueurs : annoncez « Égalité ! C'est le Bouc Émissaire qui est sacrifié ! » Avant d'expirer, il a le pouvoir de désigner les personnes autorisées à voter lors du prochain jour.",
     image: ""
   },
   {
@@ -166,6 +178,7 @@ export const rolesData = [
     power: "Chaque nuit, désignez un joueur (ou vous-même) : il est immunisé contre l'attaque des loups pour la nuit.",
     advice: "⚠️ Règle stricte : vous ne pouvez pas protéger la même personne deux nuits de suite !",
     description: "Chaque nuit, protégez un joueur de l'attaque des loups. Interdiction de protéger la même personne 2 nuits de suite.",
+    mjScript: "« Le Salvateur se réveille ! » — Il vous désigne du doigt le joueur qu'il protège cette nuit (lui-même ou un autre). Vérifiez qu'il ne s'agit pas de la même personne que la nuit précédente. « Le Salvateur s'endort. » Si les loups attaquent cette cible, elle ne meurt pas.",
     image: ""
   },
   {
@@ -179,6 +192,7 @@ export const rolesData = [
     power: "Vous chassez la nuit avec les loups. Une nuit sur deux, vous vous réveillez seul pour dévorer un loup-garou !",
     advice: "Faites-vous passer pour un loup fidèle jusqu'à ce que vous puissiez les éliminer un à un sans danger.",
     description: "Vous chassez avec les loups, mais une nuit sur deux, vous pouvez dévorer un autre loup en secret pour gagner seul.",
+    mjScript: "Il se réveille d'abord avec les loups. Une nuit sur deux (ex: Nuits 2, 4, 6), après avoir rendormi la meute : « Le Loup-Garou Blanc se réveille seul... » Il vous montre un loup à dévorer. « Le Loup Blanc s'endort. »",
     image: ""
   },
   {
@@ -192,6 +206,7 @@ export const rolesData = [
     power: "Chaque nuit, désignez un joueur suspect : au réveil, il reçoit automatiquement 2 voix d'office contre lui pour le vote.",
     advice: "Un excellent moyen de faire pression sur un suspect sans avoir à vous dévoiler publiquement.",
     description: "Chaque nuit, désignez un suspect. Ce joueur aura d'office 2 voix contre lui lors du vote du lendemain.",
+    mjScript: "« Le Corbeau se réveille ! » — Il pointe un joueur suspect du doigt. « Le Corbeau s'endort. » Au réveil du matin, annoncez à haute voix : « Le Corbeau a laissé des plumes menaçantes sur la porte de [Nom] : il écope d'office de 2 voix contre lui pour le vote d'aujourd'hui ! »",
     image: ""
   },
   {
@@ -205,6 +220,7 @@ export const rolesData = [
     power: "Si le village vote pour vous éliminer dès le Jour 1, vous gagnez la partie immédiatement et seul !",
     advice: "Si vous ratez votre coup au Jour 1, vous devenez un Simple Villageois sans pouvoir pour le reste du jeu.",
     description: "Si vous parvenez à vous faire éliminer lors du tout premier vote du village, vous gagnez la partie seul !",
+    mjScript: "Rôle passif la nuit. Si et seulement si au Jour 1 le vote du village le condamne à mort, stoppez la partie : « C'est l'Ange ! Il gagne la partie seul immédiatement ! » S'il survit au Jour 1, il devient un simple villageois.",
     image: ""
   },
   {
@@ -218,6 +234,7 @@ export const rolesData = [
     power: "Tant qu'aucun loup n'est mort, vous vous réveillez une 2ème fois chaque nuit pour dévorer une victime supplémentaire seul.",
     advice: "Protégez la meute à tout prix : dès qu'un seul loup meurt, vous perdez définitivement cette seconde attaque.",
     description: "Tant qu'aucun loup n'est mort, vous dévorez une deuxième victime supplémentaire chaque nuit.",
+    mjScript: "Tant qu'aucun loup de la meute n'a été tué : après avoir rendormi les loups, dites : « Le Grand Méchant Loup se réveille seul... » Il vous montre une 2ème victime. « Le Grand Méchant Loup s'endort. » Dès qu'un loup meurt, ce pouvoir s'éteint.",
     image: ""
   },
   {
@@ -231,6 +248,7 @@ export const rolesData = [
     power: "La première nuit, vous choisissez un modèle. Tant qu'il vit, vous êtes villageois. S'il meurt, vous rejoignez la meute des loups !",
     advice: "Observez bien votre modèle en jeu : sa survie décidera de quel côté vous devrez vous battre.",
     description: "La première nuit, vous choisissez un modèle. Si ce modèle meurt, vous devenez un Loup-Garou.",
+    mjScript: "Nuit 1 : « L'Enfant Sauvage se réveille... » Il vous montre un joueur qui devient son Modèle. « L'Enfant Sauvage s'endort. » Dès que ce modèle meurt dans la partie, touchez discrètement l'épaule de l'Enfant Sauvage pour lui signifier qu'il se réveillera désormais avec les loups.",
     image: ""
   },
   {
@@ -244,6 +262,7 @@ export const rolesData = [
     power: "La première nuit, vous décidez définitivement si vous préférez être un Simple Villageois ou rejoindre la meute des Loups.",
     advice: "Une fois votre choix fait, vous combattez loyalement pour ce camp jusqu'au dénouement.",
     description: "La première nuit, vous décidez si vous voulez être un simple villageois ou rejoindre le camp des Loups-Garous.",
+    mjScript: "Nuit 1 uniquement : « Le Chien-Loup se réveille... » Le MJ lui demande son choix : faire le geste d'un villageois ou montrer les crocs. S'il choisit loup, il ouvrira les yeux ensuite avec la meute. Le choix est irréversible.",
     image: ""
   },
   {
@@ -257,6 +276,7 @@ export const rolesData = [
     power: "La nuit, désignez un joueur : le MJ vous révèle si un Loup se trouve parmi lui et ses 2 voisins directs.",
     advice: "Si au moins un loup est présent, vous gardez votre pouvoir. S'il n'y a aucun loup dans le trio, vous perdez votre pouvoir !",
     description: "La nuit, désignez 3 voisins. S'il y a un loup parmi eux, vous gardez votre pouvoir, sinon vous le perdez.",
+    mjScript: "« Le Renard se réveille ! » — Il montre un joueur au centre. Le MJ regarde ce joueur et ses 2 voisins immédiats assis à côté. S'il y a un loup parmi eux : hochez la tête oui (il garde son pouvoir). S'il n'y a AUCUN loup : secouez la tête non (pouvoir définitivement perdu).",
     image: ""
   },
   {
@@ -270,6 +290,7 @@ export const rolesData = [
     power: "La première nuit, vous vous réveillez ensemble : vous savez avec certitude que vous êtes toutes les deux d'honnêtes villageoises.",
     advice: "Faites confiance aveugle à votre sœur et concertez vos votes pour influencer le village.",
     description: "La première nuit, vous vous réveillez pour vous reconnaître. Vous avez la certitude d'être deux villageoises.",
+    mjScript: "Nuit 1 uniquement : « Les Deux Sœurs se réveillent... » Elles ouvrent les yeux, se regardent pour se reconnaître, puis : « Les Deux Sœurs s'endorment. »",
     image: ""
   },
   {
@@ -283,6 +304,7 @@ export const rolesData = [
     power: "La première nuit, vous vous réveillez tous les trois : vous savez avec certitude que vous êtes des villageois innocents.",
     advice: "À trois votes coordonnés, vous avez le pouvoir d'orienter les décisions du village.",
     description: "La première nuit, vous vous réveillez pour vous reconnaître. Vous formez une alliance solide de 3 villageois.",
+    mjScript: "Nuit 1 uniquement : « Les Trois Frères se réveillent... » Ils ouvrent les yeux, se regardent pour se reconnaître, puis : « Les Trois Frères s'endorment. »",
     image: ""
   },
   {
@@ -296,6 +318,7 @@ export const rolesData = [
     power: "Une fois dans la partie, après la résolution d'un vote du village, vous pouvez ordonner immédiatement un deuxième vote consécutif !",
     advice: "À utiliser quand les villageois ont démasqué un loup et disposent d'un autre suspect très chaud.",
     description: "Une fois dans la partie, vous pouvez provoquer un deuxième vote consécutif du village le même jour.",
+    mjScript: "Nuit 1 : « Le Juge Bègue se réveille... » Vous convenez d'un signe discret (ex: poser sa main sur son menton). Le jour, après n'importe quel vote, s'il fait le signe : annoncez immédiatement « Le Juge Bègue ordonne un second vote d'affilée aujourd'hui ! »",
     image: ""
   },
   {
@@ -309,6 +332,7 @@ export const rolesData = [
     power: "Si vous êtes dévoré par les loups la nuit, votre sang rouillé empoisonne le premier loup à votre gauche : il mourra la nuit suivante !",
     advice: "Même dévoré, votre sacrifice garantit l'élimination certaine d'un loup-garou.",
     description: "Si vous êtes dévoré par les loups, le premier loup situé à votre gauche mourra empoisonné la nuit suivante.",
+    mjScript: "Rôle passif la nuit. Si les loups le dévorent : au matin de sa mort, notez qui est le premier loup vivant assis physiquement à sa gauche dans la salle. La nuit suivante, ce loup succombera au venin et mourra sans bruit au petit matin.",
     image: ""
   },
   {
@@ -322,6 +346,7 @@ export const rolesData = [
     power: "Le MJ place 3 cartes de rôles en réserve. Chaque nuit, vous pouvez choisir d'incarner l'un de ces rôles (une seule fois chacun).",
     advice: "Gardez votre pouvoir le plus défensif ou décisif pour les nuits les plus tendues.",
     description: "Le MJ choisit 3 rôles en réserve. Chaque nuit, vous pouvez choisir d'utiliser l'un de ces pouvoirs (1 fois chacun).",
+    mjScript: "Chaque nuit : « Le Comédien se réveille... » Le MJ lui présente discrètement les cartes restantes de sa réserve. S'il en pointe une, il applique son pouvoir pour cette nuit. La carte utilisée est défaussée. « Le Comédien s'endort. »",
     image: ""
   },
   {
@@ -335,6 +360,7 @@ export const rolesData = [
     power: "Chaque matin, si un Loup-Garou se trouve immédiatement assis à votre gauche ou à votre droite, l'ours grogne (annoncé par le MJ) !",
     advice: "Si l'ours grogne, l'un de vos deux voisins directs est un loup (à moins que vous ne soyez vous-même infecté).",
     description: "Chaque matin, si un loup-garou est assis immédiatement à côté de vous, le MJ fait grogner votre ours.",
+    mjScript: "Chaque matin, immédiatement après le réveil du village : vérifiez qui est assis à la droite et à la gauche immédiate du montreur d'ours. Si l'un d'eux est un Loup (ou si le montreur est infecté) : imitez un gros grognement d'ours « GRRRR ! » pour prévenir le village.",
     image: ""
   },
   {
@@ -348,6 +374,7 @@ export const rolesData = [
     power: "La nuit, vous pouvez incendier une maison. Si c'est celle de la victime des loups, elle est sauvée. Sinon, son habitant périt !",
     advice: "Pouvoir à double tranchant : tentez d'anticiper la cible des loups pour la sauver.",
     description: "Chaque nuit, brûlez une maison : si c'est la victime des loups, elle est sauvée ; sinon, son habitant meurt.",
+    mjScript: "« Le Pyromane se réveille ! » — Il vous désigne une maison à brûler (ou fait signe qu'il s'abstient). Si la maison est celle attaquée par les loups, elle est sauvée ! Sinon, la personne désignée meurt brûlée. « Le Pyromane s'endort. »",
     image: ""
   },
   {
@@ -361,6 +388,7 @@ export const rolesData = [
     power: "Vous connaissez les morts de la nuit. Si vous êtes éliminé, votre spectre continue de voter secrètement pendant 2 jours !",
     advice: "Même dans la tombe, vos votes fantômes peuvent débloquer les égalités cruciales.",
     description: "La nuit, vous savez qui va mourir. Si vous êtes éliminé, vous continuez de voter secrètement pendant 2 jours.",
+    mjScript: "S'il est éliminé, il continue de participer aux 2 votes suivants : il vous transmet son vote secrètement par écrit ou signe avant le décompte.",
     image: ""
   },
   {
@@ -374,6 +402,7 @@ export const rolesData = [
     power: "Une fois dans la partie, après l'attaque des loups, vous pouvez infecter la victime au lieu de la tuer : elle devient Loup-Garou !",
     advice: "Infectez un joueur influent ou un rôle à pouvoir pour porter un coup fatal au village.",
     description: "Une fois par partie, vous pouvez infecter la victime des loups au lieu de la tuer : elle rejoint la meute.",
+    mjScript: "Pendant le réveil des loups, après la désignation de la victime : l'Infect Père des Loups peut lever le bras pour signifier l'infection. Après avoir rendormi les loups, touchez discrètement l'épaule de la victime pour lui faire signe qu'elle est infectée (elle rejoint la meute dès la nuit prochaine).",
     image: ""
   },
   {
@@ -387,6 +416,7 @@ export const rolesData = [
     power: "Vous gagnez avec les loups. La nuit, vous pouvez flairer un trio de voisins pour détecter la présence de pouvoirs villageois.",
     advice: "Transmettez discrètement vos informations à la meute pour éliminer la Voyante ou la Sorcière.",
     description: "Mi-renard, mi-loup. Vous gagnez avec les loups tout en détectant les rôles à la manière du renard.",
+    mjScript: "Se réveille avec les loups. Il peut aussi être appelé comme le renard pour flairer 3 voisins et guider les attaques nocturnes de sa meute.",
     image: ""
   },
   {
@@ -400,6 +430,7 @@ export const rolesData = [
     power: "Nommé par le Maire, vous pouvez décerner un blâme (privant un joueur de parole) ou une médaille (donnant 2 voix au vote).",
     advice: "Utilisez vos décorations pour appuyer un innocent prouvé, et vos blâmes pour museler un menteur.",
     description: "Nommé par le maire, vous distribuez des blâmes (interdisant la parole) ou des médailles (donnant une double voix).",
+    mjScript: "Nommé par le Maire/Capitaine. Pendant le jour, il peut infliger un blâme (le joueur ne peut plus parler jusqu'au soir) ou remettre une médaille (+1 voix de vote).",
     image: ""
   },
   {
@@ -413,6 +444,7 @@ export const rolesData = [
     power: "La première nuit, le village est séparé en deux camps visibles (ex: barbus / non-barbus). Vous devez éliminer l'autre moitié pour gagner.",
     advice: "Poussez le lynchage des membres de la faction rivale, qu'ils soient loups ou villageois.",
     description: "Le MJ sépare le village en 2 camps la première nuit. Vous gagnez si tous les membres du camp opposé sont éliminés.",
+    mjScript: "Nuit 1 : le MJ annonce publiquement le critère de séparation visible (ex: porteurs de lunettes vs non-porteurs, ou côté table gauche vs droite). Le sectaire appartient à l'un des deux camps et gagne si l'autre camp est entièrement décimé.",
     image: ""
   },
   {
@@ -426,6 +458,7 @@ export const rolesData = [
     power: "Vous êtes le petit de la meute. Si vous êtes tué (de jour ou de nuit), les Loups-Garous feront 2 victimes la nuit suivante pour vous venger !",
     advice: "Votre mort n'est pas une défaite : elle donne une double attaque dévastatrice à vos compagnons loups.",
     description: "Si vous êtes tué, les Loups-Garous dévorent deux victimes la nuit suivante pour vous venger.",
+    mjScript: "S'il est éliminé dans la partie : lors de la nuit suivante, annoncez discrètement aux loups au réveil qu'ils ont droit à 2 victimes consécutives pour venger le louveteau !",
     image: ""
   },
   {
@@ -439,6 +472,7 @@ export const rolesData = [
     power: "La première nuit, une cible secrète vous est attribuée. Si vous réussissez à la faire lyncher par le village, vous gagnez seul immédiatement !",
     advice: "Si votre cible est tuée par les loups de nuit, vous devenez un Simple Villageois sans pouvoir.",
     description: "Vous gagnez seul si le joueur désigné comme votre cible secrète est lynché par le vote du village.",
+    mjScript: "Nuit 1 : « Le Chasseur de Têtes se réveille... » Le MJ lui désigne discrètement un joueur qui devient sa cible. « Il se rendort. » S'il réussit à faire lyncher sa cible lors d'un vote de jour, il remporte la partie seul !",
     image: ""
   },
   {
@@ -452,6 +486,7 @@ export const rolesData = [
     power: "Pendant le jour, vous pouvez égorger un joueur suspect. Si c'est un loup, il meurt. Mais si c'est un innocent, vous mourez sur-le-champ !",
     advice: "Ne frappez que lorsque vous avez une certitude absolue, sinon votre rasoir se retournera contre vous.",
     description: "Le jour, vous pouvez éliminer un joueur au rasoir. S'il était innocent, vous mourez immédiatement.",
+    mjScript: "Action de jour : à tout moment avant un vote, le joueur peut déclarer : « Je suis le Barbier et j'égorge [Nom] ! » Si la cible est loup, elle meurt. Si elle est innocente, le Barbier meurt sur-le-champ.",
     image: ""
   },
   {
@@ -465,6 +500,7 @@ export const rolesData = [
     power: "Une fois dans la partie, en plein jour, vous pouvez forcer un joueur à vous révéler secrètement sa véritable carte de rôle.",
     advice: "Conservez votre confession pour un moment critique de tension entre deux suspects.",
     description: "Une fois dans la partie, vous pouvez forcer un joueur à vous révéler secrètement sa véritable carte de rôle.",
+    mjScript: "Une fois dans la partie, en plein jour : il peut obliger un joueur à lui montrer secrètement sa carte dans un coin de la pièce.",
     image: ""
   },
   {
@@ -478,6 +514,7 @@ export const rolesData = [
     power: "Chaque nuit, vous concoctez une potion secrète : soit un poison mortel, soit un élixir rendant invincible pour la nuit.",
     advice: "Protégez les villageois essentiels et éliminez les joueurs dont le comportement est suspect.",
     description: "Vous distribuez secrètement des potions aux joueurs : l'une tue, l'autre rend invincible pour une nuit.",
+    mjScript: "« L'Alchimiste se réveille ! » — Il mime soit la fiole mortelle (désigne un joueur qui mourra au matin), soit l'élixir (désigne un joueur qui sera protégé). « L'Alchimiste s'endort. »",
     image: ""
   },
   {
@@ -491,6 +528,7 @@ export const rolesData = [
     power: "La première nuit, vous découvrez exactement combien de joueurs possèdent des pouvoirs spéciaux dans la partie.",
     advice: "Cette information aide à déduire le nombre exact de loups et de villageois simples en jeu.",
     description: "La première nuit, vous découvrez exactement combien de joueurs possèdent des pouvoirs spéciaux.",
+    mjScript: "Nuit 1 uniquement : « Le Devin se réveille... » Le MJ lui montre discrètement avec les doigts le nombre total de rôles à pouvoir spéciaux présents dans la partie.",
     image: ""
   },
   {
@@ -504,6 +542,7 @@ export const rolesData = [
     power: "Si vous faites partie des 3 derniers survivants de la partie, vous gagnez automatiquement, quel que soit le camp vainqueur !",
     advice: "Restez discrète, ne provoquez personne et laissez les villageois et les loups s'éliminer entre eux.",
     description: "Si vous parvenez à survivre jusqu'aux 3 derniers joueurs, vous gagnez automatiquement la partie.",
+    mjScript: "Rôle passif. Surveillez le nombre de survivants. Dès qu'il ne reste plus que 3 joueurs vivants autour de la table : si la Charmeuse en fait partie, la partie prend fin et elle gagne seule !",
     image: ""
   },
   {
@@ -517,6 +556,7 @@ export const rolesData = [
     power: "Une fois dans la partie, si le village vote pour vous condamner à mort, vous révélez une illusion et survivez miraculeusement !",
     advice: "Vous pouvez attirer les soupçons pour faire gaspiller un vote de lynchage au village sans risquer votre vie.",
     description: "Une fois par partie, si le village vote pour vous exécuter, votre illusion vous sauve et vous survivez.",
+    mjScript: "Si le village vote pour éliminer l'Illusionniste, celui-ci peut crier : « Illusion ! » et révéler sa carte. Annoncez : « C'était une illusion ! L'Illusionniste survit et personne ne meurt aujourd'hui ! » Son pouvoir est alors consommé.",
     image: ""
   }
 ];
