@@ -668,28 +668,89 @@ export default function MjDashboard() {
 
           {/* ── Slider : nombre de joueurs ─────────────────────────────── */}
           <div style={{ marginBottom: '1.5rem', background: 'var(--input-bg)', padding: '1rem', borderRadius: '12px' }}>
-            <h3 className="title-font" style={{ fontSize: '1.1rem', marginBottom: '10px' }}>
-              Nombre de joueurs cible :{' '}
-              <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{nbJoueurs}</span>
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <h3 className="title-font" style={{ fontSize: '1.1rem', margin: 0 }}>
+                Nombre de joueurs cible :{' '}
+                <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{nbJoueurs}</span>
+              </h3>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setNbJoueurs(prev => Math.max(3, prev - 1))}
+                  className="role-btn"
+                  style={{ width: '32px', height: '32px', background: 'var(--card-bg)', borderRadius: '6px', border: '1px solid var(--card-border)' }}
+                >
+                  -
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNbJoueurs(prev => Math.min(35, prev + 1))}
+                  className="role-btn"
+                  style={{ width: '32px', height: '32px', background: 'var(--card-bg)', borderRadius: '6px', border: '1px solid var(--card-border)' }}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
             <input
               type="range"
               min="3"
-              max="24"
+              max="35"
               value={nbJoueurs}
               onChange={e => setNbJoueurs(Number(e.target.value))}
               style={{ width: '100%', accentColor: 'var(--primary)', cursor: 'pointer' }}
             />
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-              <span className="text-font" style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>3</span>
-              <span className="text-font" style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>24</span>
+              <span className="text-font" style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>3 joueurs</span>
+              <span className="text-font" style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>35 joueurs</span>
             </div>
+
+            {/* Raccourcis rapides */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
+              {[6, 10, 15, 20, 25, 30, 35].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setNbJoueurs(n)}
+                  className="text-font"
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '0.8rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--card-border)',
+                    background: nbJoueurs === n ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
+                    color: nbJoueurs === n ? '#fff' : 'var(--text-color)',
+                    cursor: 'pointer',
+                    fontWeight: nbJoueurs === n ? 'bold' : 'normal',
+                  }}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+
             {selectedRoles.length > 0 && surplus !== 0 && (
-              <p className="text-font" style={{ marginTop: '8px', fontSize: '0.85rem', color: surplus < 0 ? '#f59e0b' : '#10b981' }}>
-                {surplus < 0
-                  ? `⚠️ Il manque ${-surplus} rôle(s) pour atteindre votre objectif.`
-                  : `✅ Vous avez ${surplus} rôle(s) en surplus — parfait pour des variantes.`}
-              </p>
+              <div style={{ marginTop: '12px', borderTop: '1px solid var(--card-border)', paddingTop: '10px' }}>
+                <p className="text-font" style={{ margin: 0, fontSize: '0.85rem', color: surplus < 0 ? '#f59e0b' : '#10b981' }}>
+                  {surplus < 0
+                    ? `⚠️ Il manque ${-surplus} rôle(s) pour atteindre votre objectif de ${nbJoueurs} joueurs.`
+                    : `✅ Vous avez ${surplus} rôle(s) en surplus — parfait pour des variantes.`}
+                </p>
+                {surplus < 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const needed = -surplus;
+                      setSelectedRoles(prev => [...prev, ...Array(needed).fill('villageois')]);
+                    }}
+                    className="btn-secondary text-font"
+                    style={{ marginTop: '8px', padding: '6px 12px', fontSize: '0.82rem', borderColor: 'var(--primary)', color: 'var(--primary)' }}
+                  >
+                    ➕ Compléter automatiquement avec {-surplus} Simple Villageois
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
@@ -720,11 +781,31 @@ export default function MjDashboard() {
           <div style={{ marginBottom: '2rem', borderTop: '1px solid var(--card-border)', paddingTop: '1.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 className="title-font" style={{ fontSize: '1.2rem', margin: 0 }}>Sélection des rôles</h3>
-              <div
-                className="role-counter text-font text-success"
-                style={{ fontWeight: 'bold', padding: '0.3rem 0.8rem', background: 'var(--input-bg)', borderRadius: '1rem' }}
-              >
-                {selectedRoles.length} sélectionné(s)
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {selectedRoles.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRoles([])}
+                    className="text-font"
+                    style={{
+                      padding: '0.3rem 0.6rem',
+                      fontSize: '0.75rem',
+                      borderRadius: '1rem',
+                      border: '1px solid rgba(239,68,68,0.5)',
+                      background: 'rgba(239,68,68,0.1)',
+                      color: '#ef4444',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Vider
+                  </button>
+                )}
+                <div
+                  className="role-counter text-font text-success"
+                  style={{ fontWeight: 'bold', padding: '0.3rem 0.8rem', background: 'var(--input-bg)', borderRadius: '1rem' }}
+                >
+                  {selectedRoles.length} sélectionné(s)
+                </div>
               </div>
             </div>
             <div className="roles-grid">
@@ -1165,7 +1246,7 @@ export default function MjDashboard() {
                 <h4 className="title-font" style={{ marginBottom: '10px', color: 'var(--text-color)' }}>
                   Désigner les accusés :
                 </h4>
-                <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1rem' }}>
+                <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1rem', maxHeight: '280px', overflowY: 'auto' }}>
                   {alivePlayers.map(j => {
                     const isSel = accusesMJ.includes(j.nom);
                     return (
@@ -1370,7 +1451,7 @@ export default function MjDashboard() {
               </select>
             )}
           </div>
-          <div style={{ marginTop: '1rem', overflowX: 'auto' }}>
+          <div style={{ marginTop: '1rem', overflowX: 'auto', maxHeight: '480px', overflowY: 'auto' }}>
             <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }} className="text-font">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--card-border)' }}>

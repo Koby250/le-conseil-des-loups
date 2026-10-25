@@ -499,7 +499,7 @@ export default function PlayerScreen() {
             <p className="text-font" style={{ marginBottom: '1.5rem', color: '#f8fafc' }}>
               Dans un dernier souffle, choisissez le joueur que vous emportez dans la tombe.
             </p>
-            <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1.5rem' }}>
+            <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1.5rem', maxHeight: '280px', overflowY: 'auto' }}>
               {allAlivePlayers.map(j => {
                 const isSel = cibleChasseur === j.nom;
                 return (
@@ -622,7 +622,7 @@ export default function PlayerScreen() {
             <h3 className="title-font" style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#c4b5fd' }}>
               👥 Tableau omniscient des joueurs
             </h3>
-            <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '380px', overflowY: 'auto' }}>
               {joueurs.map(j => {
                 const rObj     = j.role ? rolesData.find(r => r.id === j.role) : null;
                 const isDead_j = j.statut_joueur === 'mort';
@@ -889,7 +889,7 @@ export default function PlayerScreen() {
             <div style={{ padding: '1rem', background: 'rgba(236,72,153,0.1)', border: '1px solid #ec4899', borderRadius: '12px', marginBottom: '1rem' }}>
               <h3 className="title-font" style={{ color: '#ec4899' }}>Cupidon</h3>
               <p className="text-font text-muted" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>Sélectionnez 2 joueurs pour former le couple.</p>
-              <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
                 {allAlivePlayers.map(j => {
                   const isSel = selectedPlayers.includes(j.id);
                   return (
@@ -953,7 +953,7 @@ export default function PlayerScreen() {
               <p className="text-font text-muted" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
                 Protégez un joueur. Vous ne pouvez pas protéger la même personne deux nuits de suite.
               </p>
-              <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
                 {allAlivePlayers.map(j => {
                   const isSel    = salvateurCible === j.nom;
                   // CORRECTIF : lit la restriction depuis le document salon (robuste sur reload)
@@ -1016,7 +1016,7 @@ export default function PlayerScreen() {
                   </button>
                 </div>
               ) : (
-                <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
                   {allAlivePlayers.filter(j => j.id !== me.id).map(j => (
                     <li
                       key={j.id}
@@ -1043,7 +1043,7 @@ export default function PlayerScreen() {
           {salonData.statut === 'nuit_loups' && isMeLoup && !me.a_vote && (
             <div style={{ padding: '1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid #ef4444', borderRadius: '12px', marginBottom: '1rem' }}>
               <h3 className="title-font text-danger">🐺 Tour des Loups</h3>
-              <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
                 {loupTargets.map(j => {
                   const isSel = salonData.vote_loup_temporaire === j.nom;
                   return (
@@ -1186,7 +1186,7 @@ export default function PlayerScreen() {
                         {cibleMortLocal ? `💀 Cible de mort : ${cibleMortLocal}` : '💀 Utiliser Potion de Mort'}
                       </button>
                       {showPotionMortSelection && (
-                        <ul style={{ listStyle: 'none', padding: 0, marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <ul style={{ listStyle: 'none', padding: 0, marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto' }}>
                           {allAlivePlayers.filter(j => j.id !== me.id).map(j => {
                             const isSel = cibleMortLocal === j.nom;
                             return (
@@ -1293,7 +1293,7 @@ export default function PlayerScreen() {
                 <p className="text-font text-muted" style={{ marginBottom: '1rem' }}>
                   Les accusés du jour sont désignés. Qui voulez-vous éliminer ?
                 </p>
-                <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
                   {salonData.la_liste_accuses.filter(nom => nom !== me.nom).map(nom => {
                     const isMyVote = monVote === nom;
                     return (
@@ -1343,7 +1343,7 @@ export default function PlayerScreen() {
           <h3 className="title-font" style={{ marginBottom: '1rem', borderBottom: '1px solid var(--card-border)', paddingBottom: '0.5rem', fontSize: '1.2rem' }}>
             Joueurs en vie
           </h3>
-          <ul style={{ listStyle: 'none', padding: 0 }} className="text-font">
+          <ul style={{ listStyle: 'none', padding: 0, maxHeight: '300px', overflowY: 'auto' }} className="text-font">
             {joueurs.filter(j => j.statut_joueur !== 'mort').map(j => (
               <li key={j.id} style={{ padding: '10px', borderBottom: '1px solid var(--card-border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--success)' }} />
