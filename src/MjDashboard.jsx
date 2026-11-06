@@ -19,6 +19,8 @@ import {
 import {
   WolfPackChat, AccusedDefenseChat, MjMessengerPanel,
 } from './GameChats';
+import AiTestPanel from './AiTestPanel';
+import { isBot } from './aiBotEngine';
 import {
   Users, RefreshCw, Eye, Settings, Play,
   Link as LinkIcon, Info, ChevronRight, Bell,
@@ -26,7 +28,7 @@ import {
   Shield, ShieldCheck, PawPrint, Skull, Sun, Moon,
   Heart, VenetianMask, FlaskConical, Gavel, Trophy,
   CheckCircle2, AlertTriangle, Hourglass, Megaphone,
-  Lock, Unlock, Sparkles, Sword, Bird, X,
+  Lock, Unlock, Sparkles, Sword, Bird, X, Bot,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
@@ -1768,6 +1770,9 @@ export default function MjDashboard() {
         )}
       </div>
 
+      {/* ── PANNEAU IA : SIMULATEUR & JOUEURS BOTS ────────────────────────── */}
+      <AiTestPanel roomId={roomId} salonData={salonData} joueurs={joueurs} />
+
       {/* ── GRILLE BASSE : QR Code / Guide + Tableau des joueurs ─────────── */}
       <div className="mj-main-grid" style={{ marginTop: '1.75rem' }}>
         {/* QR Code (avant lancement) */}
@@ -1874,7 +1879,14 @@ export default function MjDashboard() {
                   return (
                     <tr key={j.id} style={{ borderBottom: '1px solid var(--card-border)', opacity: j.statut_joueur === 'mort' ? 0.55 : 1 }}>
                       <td style={{ padding: '10px 8px', fontWeight: 'bold', color: 'var(--text-color)' }}>
-                        {j.nom}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{j.nom}</span>
+                          {isBot(j) && (
+                            <span style={{ fontSize: '0.72rem', background: 'rgba(6,182,212,0.18)', color: '#06b6d4', border: '1px solid rgba(6,182,212,0.3)', padding: '2px 6px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: 'bold' }}>
+                              <Bot size={11} /> IA
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: '10px 8px' }}>
                         <select
