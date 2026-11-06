@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot,
-  runTransaction, writeBatch, arrayRemove, arrayUnion,
+  runTransaction, writeBatch, arrayRemove, arrayUnion, deleteField,
 } from 'firebase/firestore';
 
 import { db } from './firebase';
@@ -18,6 +18,7 @@ import {
   PlayerMjNotificationAndInbox,
   RoleChangeProposalModal,
 } from './GameChats';
+import { useAutoMj, executeNextNightAuto } from './autoMjEngine';
 import {
   AlertTriangle, EyeOff, Eye, User, Send, Lock, Unlock,
   Heart, HeartCrack, PawPrint, ShieldCheck, FlaskConical,
@@ -32,7 +33,7 @@ import ThemeToggle from './ThemeToggle';
  * Affiche clairement les victimes avec leur rôle révélé au grand jour,
  * ou les grâces (Idiot du Village, Illusionniste).
  */
-function VerdictResolutionCard({ salonData, joueurs, onSelectRole }) {
+function VerdictResolutionCard({ roomId, salonData, joueurs, onSelectRole, isMainAction = false }) {
   if (salonData?.statut !== 'jour_resolution') return null;
 
   let type = salonData?.verdict_details?.type;
@@ -202,6 +203,24 @@ function VerdictResolutionCard({ salonData, joueurs, onSelectRole }) {
           <span>Le Chasseur ({chasseurEnAttente.nom}) prépare son ultime tir de vengeance...</span>
         </div>
       )}
+
+      {/* Mode MJ Automatisé : Compteur avant la nuit suivante */}
+      {salonData?.mj_automatique && !chasseurEnAttente && (
+        <div style={{ marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px solid rgba(255,255,255,0.12)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: '#c4b5fd', fontWeight: 600 }}>
+            <Hourglass size={14} />
+            <span>Mode MJ Automatisé : La nuit tombe dans quelques instants...</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => executeNextNightAuto(roomId || salonData?.id, salonData, joueurs)}
+            className="btn-secondary text-font"
+            style={{ padding: '6px 14px', fontSize: '0.8rem', borderRadius: '20px', borderColor: 'var(--primary)', color: 'var(--primary)', fontWeight: 700 }}
+          >
+            Lancer la nuit maintenant &rarr;
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -356,6 +375,9 @@ export default function PlayerScreen() {
   const [cibleChasseur, setCibleChasseur]                     = useState(null);
   const [corbeauCible, setCorbeauCible]                       = useState(null);
   const [renardResult, setRenardResult]                       = useState(null);
+
+  // ── Boucle de Maître du Jeu Automatisé ───────────────────────────────────────
+  useAutoMj(roomId, salonData, joueurs);
 
   // ── Abonnements Firestore ───────────────────────────────────────────────────
   useEffect(() => {
@@ -710,7 +732,7 @@ export default function PlayerScreen() {
           isOpen={showGrimoire}
           onClose={() => setShowGrimoire(false)}
           onSelectRole={r => setInspectRole(r)}
-          activeRoleIds={activeRoleIds}
+          hideActiveRoles={true}
         />
       </div>
     );
@@ -885,7 +907,7 @@ export default function PlayerScreen() {
           isOpen={showGrimoire}
           onClose={() => setShowGrimoire(false)}
           onSelectRole={r => setInspectRole(r)}
-          activeRoleIds={activeRoleIds}
+          hideActiveRoles={true}
         />
       </div>
     );
@@ -1116,8 +1138,16 @@ export default function PlayerScreen() {
           </div>
 
           {/* Annonce Sentence / Bilan nuit pour les spectateurs */}
-          <VerdictResolutionCard salonData={salonData} joueurs={joueurs} onSelectRole={r => setInspectRole(r)} />
+          <VerdictResolutionCard roomId={roomId} salonData={salonData} joueurs={joueurs} onSelectRole={r => setInspectRole(r)} />
           <NightResolutionCard salonData={salonData} joueurs={joueurs} onSelectRole={r => setInspectRole(r)} />
+
+          {/* Rappel du dernier condamné au bûcher pendant la nuit */}
+          {isNightMode && salonData.condamne_jour && !salonData.condamne_jour.includes('Personne') && (
+            <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '10px', fontSize: '0.82rem', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '1rem' }}>
+              <Skull size={15} style={{ color: '#ef4444', flexShrink: 0 }} />
+              <span>Dernier condamné au bûcher : <strong>{salonData.condamne_jour}</strong></span>
+            </div>
+          )}
 
           {/* Infos de la nuit (si phase nuit) */}
           {isNightMode && (
@@ -1265,10 +1295,18 @@ export default function PlayerScreen() {
         </div>
 
         {/* Annonce officielle du Verdict du Village (Sentence / Bûcher) */}
-        <VerdictResolutionCard salonData={salonData} joueurs={joueurs} onSelectRole={r => setInspectRole(r)} />
+        <VerdictResolutionCard roomId={roomId} salonData={salonData} joueurs={joueurs} onSelectRole={r => setInspectRole(r)} />
 
         {/* Bilan du réveil et victimes de la nuit */}
         <NightResolutionCard salonData={salonData} joueurs={joueurs} onSelectRole={r => setInspectRole(r)} />
+
+        {/* Rappel du dernier condamné au bûcher pendant la nuit */}
+        {isNightMode && salonData?.condamne_jour && !salonData.condamne_jour.includes('Personne') && (
+          <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '10px', fontSize: '0.82rem', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '1rem' }}>
+            <Skull size={15} style={{ color: '#ef4444', flexShrink: 0 }} />
+            <span>Dernier condamné au bûcher : <strong>{salonData.condamne_jour}</strong></span>
+          </div>
+        )}
 
         {/* ── SECRETS DU JOUEUR : affichés uniquement si showRole ──────────────── */}
         {showRole && (
@@ -2119,14 +2157,175 @@ export default function PlayerScreen() {
                 </p>
               </div>
             ) : !(salonData?.la_liste_accuses?.length > 0) ? (
-              <p className="text-font text-muted" style={{ textAlign: 'center', padding: '1.5rem 0', fontStyle: 'italic' }}>
-                En attente du Maître du Jeu qui ouvre la liste des accusés...
-              </p>
+              <div>
+                <p className="text-font text-muted" style={{ marginBottom: '0.75rem', fontSize: '0.88rem' }}>
+                  Phase d'Accusations : Désignez le joueur que vous suspectez d'être un Loup-Garou, ou choisissez de n'accuser personne.
+                </p>
+
+                {/* Option N'accuser personne */}
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const newVote = monVote === 'Personne' ? null : 'Personne';
+                      try {
+                        if (newVote === null) {
+                          await updateDoc(doc(db, 'salons', roomId), {
+                            [`votes.${me.nom}`]: deleteField(),
+                          });
+                        } else {
+                          await updateDoc(doc(db, 'salons', roomId), {
+                            [`votes.${me.nom}`]: 'Personne',
+                          });
+                        }
+                      } catch (e) { console.error(e); }
+                    }}
+                    className="text-font"
+                    style={{
+                      width: '100%',
+                      padding: '11px 14px',
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: monVote === 'Personne' ? 'rgba(16, 185, 129, 0.22)' : 'var(--input-bg)',
+                      border: monVote === 'Personne' ? '1.5px solid #10b981' : '1px solid var(--card-border)',
+                      color: monVote === 'Personne' ? '#10b981' : 'var(--text-color)',
+                      fontWeight: 700,
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                      <ShieldCheck size={18} style={{ color: '#10b981' }} />
+                      <span>N'accuser personne (Vote blanc / Grâce)</span>
+                    </span>
+                    {monVote === 'Personne' && (
+                      <span style={{ fontSize: '0.8rem', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <CheckCircle2 size={15} /> Choisi
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Liste de tous les joueurs en vie à accuser */}
+                <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
+                  {allAlivePlayers.filter(j => j.id !== me.id).map(j => {
+                    const isMyVote = monVote === j.nom;
+                    const accusationCount = Object.values(salonData.votes || {}).filter(v => v === j.nom).length;
+                    return (
+                      <li
+                        key={j.id}
+                        onClick={async () => {
+                          const newVote = isMyVote ? null : j.nom;
+                          try {
+                            if (newVote === null) {
+                              await updateDoc(doc(db, 'salons', roomId), {
+                                [`votes.${me.nom}`]: deleteField(),
+                              });
+                            } else {
+                              await updateDoc(doc(db, 'salons', roomId), {
+                                [`votes.${me.nom}`]: j.nom,
+                              });
+                            }
+                          } catch (e) { console.error(e); }
+                        }}
+                        style={{
+                          padding: '10px 14px',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          background: isMyVote ? '#ef4444' : 'rgba(255,255,255,0.05)',
+                          color: isMyVote ? '#fff' : 'var(--text-color)',
+                          border: isMyVote ? '1px solid #b91c1c' : '1px solid var(--card-border)',
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontWeight: 700 }}>{j.nom}</span>
+                          {accusationCount > 0 && (
+                            <span style={{ fontSize: '0.72rem', background: isMyVote ? 'rgba(0,0,0,0.3)' : 'rgba(239,68,68,0.18)', color: isMyVote ? '#fff' : '#ef4444', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                              {accusationCount} accusation(s)
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.82rem', fontWeight: 700 }}>
+                          {isMyVote ? (
+                            <><CheckCircle2 size={15} /> Accusé</>
+                          ) : (
+                            'Accuser'
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                {monVote && (
+                  <p className="text-font" style={{ color: 'var(--success)', marginTop: '0.85rem', textAlign: 'center', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.9rem' }}>
+                    <CheckCircle2 size={16} />
+                    {monVote === 'Personne' ? (
+                      "Vous avez choisi de n'accuser personne."
+                    ) : (
+                      <>Votre accusation contre <strong>{monVote}</strong> est enregistrée.</>
+                    )}
+                  </p>
+                )}
+              </div>
             ) : (
               <>
                 <p className="text-font text-muted" style={{ marginBottom: '0.75rem', fontSize: '0.88rem' }}>
-                  Qui souhaitez-vous condamner aujourd'hui ?
+                  Tribunal du Village : Qui souhaitez-vous condamner au bûcher ?
                 </p>
+
+                {/* Option N'accuser personne / Gracier les accusés */}
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const newVote = monVote === 'Personne' ? null : 'Personne';
+                      try {
+                        if (newVote === null) {
+                          await updateDoc(doc(db, 'salons', roomId), {
+                            [`votes.${me.nom}`]: deleteField(),
+                          });
+                        } else {
+                          await updateDoc(doc(db, 'salons', roomId), {
+                            [`votes.${me.nom}`]: 'Personne',
+                          });
+                        }
+                      } catch (e) { console.error(e); }
+                    }}
+                    className="text-font"
+                    style={{
+                      width: '100%',
+                      padding: '11px 14px',
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: monVote === 'Personne' ? 'rgba(16, 185, 129, 0.22)' : 'var(--input-bg)',
+                      border: monVote === 'Personne' ? '1.5px solid #10b981' : '1px solid var(--card-border)',
+                      color: monVote === 'Personne' ? '#10b981' : 'var(--text-color)',
+                      fontWeight: 700,
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                      <ShieldCheck size={18} style={{ color: '#10b981' }} />
+                      <span>N'accuser personne (Gracier les accusés)</span>
+                    </span>
+                    {monVote === 'Personne' && (
+                      <span style={{ fontSize: '0.8rem', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <CheckCircle2 size={15} /> Choisi
+                      </span>
+                    )}
+                  </button>
+                </div>
+
                 <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
                   {salonData.la_liste_accuses.filter(nom => nom !== me.nom).map(nom => {
                     const isMyVote = monVote === nom;
@@ -2134,33 +2333,36 @@ export default function PlayerScreen() {
                       <li
                         key={nom}
                         onClick={async () => {
-                          if (monVote) return;
-                          if (!window.confirm(`Confirmez-vous votre vote irrévocable contre ${nom} ?`)) return;
+                          const newVote = isMyVote ? null : nom;
                           try {
-                            await updateDoc(doc(db, 'salons', roomId), {
-                              [`votes.${me.nom}`]: nom,
-                            });
+                            if (newVote === null) {
+                              await updateDoc(doc(db, 'salons', roomId), {
+                                [`votes.${me.nom}`]: deleteField(),
+                              });
+                            } else {
+                              await updateDoc(doc(db, 'salons', roomId), {
+                                [`votes.${me.nom}`]: nom,
+                              });
+                            }
                           } catch (e) { console.error(e); }
                         }}
                         style={{
                           padding: '11px 14px',
                           borderRadius: '8px',
-                          cursor: monVote ? 'not-allowed' : 'pointer',
+                          cursor: 'pointer',
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
                           background: isMyVote ? '#ef4444' : 'rgba(255,255,255,0.05)',
-                          color: isMyVote ? '#fff' : (monVote ? 'var(--text-muted)' : 'var(--text-color)'),
+                          color: isMyVote ? '#fff' : 'var(--text-color)',
                           border: isMyVote ? '1px solid #b91c1c' : '1px solid var(--card-border)',
-                          opacity: monVote && !isMyVote ? 0.55 : 1,
+                          transition: 'all 0.2s ease',
                         }}
                       >
                         <span style={{ fontWeight: 700 }}>{nom}</span>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.82rem', fontWeight: 700 }}>
                           {isMyVote ? (
                             <><CheckCircle2 size={15} /> Vote enregistré</>
-                          ) : monVote ? (
-                            <><Lock size={14} /> Verrouillé</>
                           ) : (
                             'Voter contre'
                           )}
@@ -2171,11 +2373,23 @@ export default function PlayerScreen() {
                 </ul>
                 {monVote && (
                   <p className="text-font" style={{ color: 'var(--success)', marginTop: '0.85rem', textAlign: 'center', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.9rem' }}>
-                    <CheckCircle2 size={16} /> Votre vote contre <strong>{monVote}</strong> est enregistré.
+                    <CheckCircle2 size={16} />
+                    {monVote === 'Personne' ? (
+                      "Vous avez voté pour n'accuser personne."
+                    ) : (
+                      <>Votre vote contre <strong>{monVote}</strong> est enregistré.</>
+                    )}
                   </p>
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {/* ── SENTENCE & CONDAMNATION DU VILLAGE (JOUR_RESOLUTION) ─────────── */}
+        {salonData.statut === 'jour_resolution' && (
+          <div style={{ marginTop: '1.5rem', textAlign: 'left' }}>
+            <VerdictResolutionCard roomId={roomId} salonData={salonData} joueurs={joueurs} onSelectRole={r => setInspectRole(r)} isMainAction={true} />
           </div>
         )}
 
@@ -2347,7 +2561,7 @@ export default function PlayerScreen() {
         isOpen={showGrimoire}
         onClose={() => setShowGrimoire(false)}
         onSelectRole={r => setInspectRole(r)}
-        activeRoleIds={activeRoleIds}
+        hideActiveRoles={true}
       />
     </div>
   );

@@ -21,6 +21,7 @@ import {
 } from './GameChats';
 import AiTestPanel from './AiTestPanel';
 import { isBot } from './aiBotEngine';
+import { useAutoMj } from './autoMjEngine';
 import {
   Users, RefreshCw, Eye, Settings, Play,
   Link as LinkIcon, Info, ChevronRight, Bell,
@@ -94,6 +95,9 @@ export default function MjDashboard() {
   const [showGrimoire, setShowGrimoire] = useState(false);
 
   const activeRoleIds = salonData?.roles_selectionnes || selectedRoles || [];
+
+  // ── Boucle de Maître du Jeu Automatisé ────────────────────────────────────
+  useAutoMj(roomId, salonData, joueurs);
 
   // ── Abonnements Firestore ─────────────────────────────────────────────────
   useEffect(() => {
@@ -1309,7 +1313,46 @@ export default function MjDashboard() {
             </strong>
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexDirection: 'row', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={async () => {
+              const next = !salonData.mj_automatique;
+              try {
+                await updateDoc(doc(db, 'salons', roomId), {
+                  mj_automatique: next,
+                  auto_mj_phase_started_at: Date.now(),
+                  auto_mj_last_tick: Date.now(),
+                });
+              } catch (e) { console.error(e); }
+            }}
+            className="btn-secondary text-font"
+            style={{
+              background: salonData.mj_automatique ? 'rgba(147, 51, 234, 0.22)' : 'var(--input-bg)',
+              borderColor: salonData.mj_automatique ? 'var(--primary)' : 'var(--card-border)',
+              color: salonData.mj_automatique ? 'var(--primary)' : 'var(--text-color)',
+              fontWeight: 800,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+            title="Activer ou désactiver l'automatisation complète du Maître du Jeu"
+          >
+            <Bot size={17} style={{ color: salonData.mj_automatique ? 'var(--primary)' : 'var(--text-muted)' }} />
+            <span>MJ Automatique : {salonData.mj_automatique ? 'ACTIF' : 'INACTIF'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => window.open(`/${roomId}`, '_blank')}
+            className="btn-secondary text-font border-accent"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+            title="Ouvrir un onglet joueur pour participer à la partie en tant que villageois"
+          >
+            <User size={16} style={{ color: '#10b981' }} />
+            <span>Jouer en tant que Joueur</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowGrimoire(true)}

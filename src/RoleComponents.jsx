@@ -500,13 +500,13 @@ export function RoleDetailsModal({ role, onClose, showMjScript = true }) {
   );
 }
 
-export function GrimoireModal({ isOpen, onClose, activeRoleIds = [], onSelectRole }) {
+export function GrimoireModal({ isOpen, onClose, activeRoleIds = [], onSelectRole, hideActiveRoles = false }) {
   const [search, setSearch] = useState('');
   const [campFilter, setCampFilter] = useState('tous');
 
   if (!isOpen) return null;
 
-  const uniqueActiveSet = new Set(activeRoleIds);
+  const uniqueActiveSet = hideActiveRoles ? new Set() : new Set(activeRoleIds);
 
   const filteredRoles = ROLES_DATA.filter((r) => {
     const matchesSearch =
