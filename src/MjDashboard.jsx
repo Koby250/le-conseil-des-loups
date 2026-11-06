@@ -30,6 +30,7 @@ import {
   Heart, VenetianMask, FlaskConical, Gavel, Trophy,
   CheckCircle2, AlertTriangle, Hourglass, Megaphone,
   Lock, Unlock, Sparkles, Sword, Bird, X, Bot, User, MoveHorizontal,
+  RotateCcw, Edit3,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
@@ -599,8 +600,11 @@ export default function MjDashboard() {
     // N'agréger que les votes des joueurs encore en vie et ayant le droit de vote
     Object.entries(votesRaw).forEach(([votant, cible]) => {
       const votantPlayer = joueurs.find(j => j.nom === votant);
-      if (votantPlayer && votantPlayer.statut_joueur !== 'mort' && !votantPlayer.gracie_idiot) {
-        votesCount[cible] = (votesCount[cible] || 0) + 1;
+      if (votantPlayer && votantPlayer.statut_joueur !== 'mort' && !votantPlayer.gracie_idiot && cible) {
+        const targets = Array.isArray(cible) ? cible : [cible];
+        targets.forEach(t => {
+          if (t) votesCount[t] = (votesCount[t] || 0) + 1;
+        });
       }
     });
 
@@ -652,15 +656,15 @@ export default function MjDashboard() {
         } catch (e) { console.error(e); }
         return;
       }
-    } else if (!condamneNom) {
-      alert('Aucun condamné. Personne ne meurt.');
+    } else if (condamneNom === 'Personne' || !condamneNom) {
+      alert("Le village a choisi de n'accuser personne. Le bûcher reste éteint.");
       try {
         await updateDoc(doc(db, 'salons', roomId), {
           statut: 'jour_resolution',
-          condamne_jour: 'Personne',
+          condamne_jour: 'Personne (Grâce du village)',
           verdict_details: {
             type: 'personne',
-            raison: "Aucun habitant n'a été désigné : personne ne meurt.",
+            raison: "Le village a choisi de n'accuser personne : aucun habitant n'est éliminé.",
             timestamp: Date.now(),
           },
         });
@@ -1284,16 +1288,21 @@ export default function MjDashboard() {
   }
   Object.entries(salonData.votes || {}).forEach(([votant, cible]) => {
     const votantPlayer = joueurs.find(j => j.nom === votant);
-    if (votantPlayer && votantPlayer.statut_joueur !== 'mort' && !votantPlayer.gracie_idiot) {
-      votesCountJour[cible] = (votesCountJour[cible] || 0) + 1;
+    if (votantPlayer && votantPlayer.statut_joueur !== 'mort' && !votantPlayer.gracie_idiot && cible) {
+      const targets = Array.isArray(cible) ? cible : [cible];
+      targets.forEach(t => {
+        if (t) votesCountJour[t] = (votesCountJour[t] || 0) + 1;
+      });
     }
   });
 
   const alivePlayers   = joueurs.filter(j => j.statut_joueur !== 'mort');
   const eligibleVoters = alivePlayers.filter(j => !j.gracie_idiot);
-  const nbVotesDeposes = Object.keys(salonData.votes || {}).filter(nom => {
+  const nbVotesDeposes = Object.entries(salonData.votes || {}).filter(([nom, val]) => {
     const p = joueurs.find(j => j.nom === nom);
-    return p && p.statut_joueur !== 'mort' && !p.gracie_idiot;
+    if (!p || p.statut_joueur !== 'mort' || p.gracie_idiot) return false;
+    if (Array.isArray(val)) return val.length > 0;
+    return Boolean(val);
   }).length;
 
   return (
@@ -1775,11 +1784,23 @@ export default function MjDashboard() {
                 </ul>
                 <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
                   <button
-                    onClick={() => setAccusesMJ(alivePlayers.map(j => j.nom))}
+                    onClick={() => {
+                      const isAll = alivePlayers.length > 0 && alivePlayers.every(j => accusesMJ.includes(j.nom));
+                      if (isAll) {
+                        setAccusesMJ([]);
+                      } else {
+                        setAccusesMJ(alivePlayers.map(j => j.nom));
+                      }
+                    }}
                     className="btn-secondary text-font"
-                    style={{ width: '100%' }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                   >
-                    <Megaphone size={16} /> Accuser tous les survivants
+                    <Megaphone size={16} />
+                    <span>
+                      {alivePlayers.length > 0 && alivePlayers.every(j => accusesMJ.includes(j.nom))
+                        ? "Tout désélectionner"
+                        : `Accuser tout le village (${alivePlayers.length} joueurs)`}
+                    </span>
                   </button>
                   <button
                     disabled={accusesMJ.length === 0}
@@ -1807,13 +1828,64 @@ export default function MjDashboard() {
                       {nbVotesDeposes}/{eligibleVoters.length} votes déposés
                     </span>
                   </div>
+
+                  {/* Actions rapides MJ sur les accusés */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px', paddingTop: '6px', borderTop: '1px solid var(--card-border)' }}>
+                    {salonData.la_liste_accuses.length < alivePlayers.length && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'salons', roomId), {
+                              la_liste_accuses: alivePlayers.map(j => j.nom),
+                            });
+                          } catch (e) { console.error(e); }
+                        }}
+                        className="btn-secondary text-font"
+                        style={{ fontSize: '0.8rem', padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                      >
+                        <Megaphone size={14} style={{ color: 'var(--primary)' }} />
+                        <span>Accuser tout le village ({alivePlayers.length})</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={async () => {
+                        setAccusesMJ(salonData.la_liste_accuses || []);
+                        try {
+                          await updateDoc(doc(db, 'salons', roomId), { la_liste_accuses: [] });
+                        } catch (e) { console.error(e); }
+                      }}
+                      className="btn-secondary text-font"
+                      style={{ fontSize: '0.8rem', padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                    >
+                      <Edit3 size={14} />
+                      <span>Modifier les accusés</span>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("Réinitialiser les accusés et les votes pour repasser en accusations libres ?")) return;
+                        try {
+                          await updateDoc(doc(db, 'salons', roomId), {
+                            la_liste_accuses: [],
+                            votes: {},
+                          });
+                        } catch (e) { console.error(e); }
+                      }}
+                      className="btn-secondary text-font"
+                      style={{ fontSize: '0.8rem', padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#ef4444' }}
+                    >
+                      <RotateCcw size={14} />
+                      <span>Réinitialiser</span>
+                    </button>
+                  </div>
+
                   {Object.entries(votesCountJour).length === 0 ? (
                     <p className="text-muted text-font">Aucun vote pour l'instant.</p>
                   ) : (
                     <ul style={{ listStyle: 'none', padding: 0 }} className="text-font">
                       {Object.entries(votesCountJour).sort((a, b) => b[1] - a[1]).map(([nom, count]) => (
                         <li key={nom} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--card-border)', color: 'var(--text-color)' }}>
-                          <span>{nom}</span> <strong>{count} voix</strong>
+                          <span>{nom === 'Personne' ? "Personne (Vote blanc / Grâce)" : nom}</span>
+                          <strong style={{ color: nom === 'Personne' ? '#10b981' : '#ef4444' }}>{count} voix</strong>
                         </li>
                       ))}
                     </ul>

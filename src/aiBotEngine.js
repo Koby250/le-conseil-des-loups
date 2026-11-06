@@ -543,43 +543,65 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
   }
 
   // I. Jour : Vote du Village
-  if (statut === 'jour_vote' && Array.isArray(salonData.la_liste_accuses) && salonData.la_liste_accuses.length > 0) {
+  if (statut === 'jour_vote') {
     const currentVotes = salonData.votes || {};
+    const aliveBots = bots.filter(b => b.statut_joueur !== 'mort' && !b.gracie_idiot);
+    const hasAccusedList = Array.isArray(salonData.la_liste_accuses) && salonData.la_liste_accuses.length > 0;
 
-    // 1. Les accusés bots envoient un message de défense s'ils ne l'ont pas encore fait
-    const accusedBots = aliveBots.filter(b => salonData.la_liste_accuses.includes(b.nom));
-    for (const accBot of accusedBots) {
-      const alreadySpoke = Array.isArray(salonData.chat_defense) && salonData.chat_defense.some(m => m.sender === accBot.nom);
-      if (!alreadySpoke) {
-        const defenseText = ACCUSED_DEFENSE_MESSAGES[Math.floor(Math.random() * ACCUSED_DEFENSE_MESSAGES.length)];
-        const msg = {
-          id: 'bot_def_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-          sender: accBot.nom,
-          text: defenseText,
-          timestamp: Date.now(),
-          isAccused: true,
-          isMj: false,
-        };
-        await updateDoc(doc(db, 'salons', roomId), {
-          chat_defense: arrayUnion(msg),
-        });
-        actionsSummary.push(`L'accusé IA ${accBot.nom} a plaidé sa défense.`);
+    if (hasAccusedList) {
+      // 1. Les accusés bots envoient un message de défense s'ils ne l'ont pas encore fait
+      const accusedBots = aliveBots.filter(b => salonData.la_liste_accuses.includes(b.nom));
+      for (const accBot of accusedBots) {
+        const alreadySpoke = Array.isArray(salonData.chat_defense) && salonData.chat_defense.some(m => m.sender === accBot.nom);
+        if (!alreadySpoke) {
+          const defenseText = ACCUSED_DEFENSE_MESSAGES[Math.floor(Math.random() * ACCUSED_DEFENSE_MESSAGES.length)];
+          const msg = {
+            id: 'bot_def_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            sender: accBot.nom,
+            text: defenseText,
+            timestamp: Date.now(),
+            isAccused: true,
+            isMj: false,
+          };
+          await updateDoc(doc(db, 'salons', roomId), {
+            chat_defense: arrayUnion(msg),
+          });
+          actionsSummary.push(`L'accusé IA ${accBot.nom} a plaidé sa défense.`);
+        }
       }
-    }
 
-    // 2. Les bots votent contre l'un des accusés
-    const botsNeedToVote = aliveBots.filter(b => !currentVotes[b.nom] && !b.gracie_idiot);
-    if (botsNeedToVote.length > 0) {
-      const newVotesUpdates = {};
-      for (const bot of botsNeedToVote) {
-        // Le bot évite de voter pour lui-même s'il y a un autre accusé
-        let choices = salonData.la_liste_accuses.filter(n => n !== bot.nom);
-        if (choices.length === 0) choices = salonData.la_liste_accuses;
-        const target = choices[Math.floor(Math.random() * choices.length)];
-        newVotesUpdates[`votes.${bot.nom}`] = target;
+      // 2. Les bots votent contre l'un des accusés
+      const botsNeedToVote = aliveBots.filter(b => !currentVotes[b.nom]);
+      if (botsNeedToVote.length > 0) {
+        const newVotesUpdates = {};
+        for (const bot of botsNeedToVote) {
+          // Le bot évite de voter pour lui-même s'il y a un autre accusé
+          let choices = salonData.la_liste_accuses.filter(n => n !== bot.nom);
+          if (choices.length === 0) choices = salonData.la_liste_accuses;
+          const target = choices[Math.floor(Math.random() * choices.length)];
+          newVotesUpdates[`votes.${bot.nom}`] = target;
+        }
+        await updateDoc(doc(db, 'salons', roomId), newVotesUpdates);
+        actionsSummary.push(`${botsNeedToVote.length} Bot(s) ont voté contre les accusés.`);
       }
-      await updateDoc(doc(db, 'salons', roomId), newVotesUpdates);
-      actionsSummary.push(`${botsNeedToVote.length} Bot(s) ont voté contre les accusés.`);
+    } else {
+      // Phase d'accusations libres : les bots désignent des suspects
+      const botsNeedToVote = aliveBots.filter(b => !currentVotes[b.nom]);
+      if (botsNeedToVote.length > 0) {
+        const allAlive = joueurs.filter(j => j.statut_joueur !== 'mort');
+        const newVotesUpdates = {};
+        for (const bot of botsNeedToVote) {
+          const otherAlive = allAlive.filter(j => j.nom !== bot.nom);
+          if (otherAlive.length > 0) {
+            const target = otherAlive[Math.floor(Math.random() * otherAlive.length)].nom;
+            newVotesUpdates[`votes.${bot.nom}`] = target;
+          }
+        }
+        if (Object.keys(newVotesUpdates).length > 0) {
+          await updateDoc(doc(db, 'salons', roomId), newVotesUpdates);
+          actionsSummary.push(`${botsNeedToVote.length} Bot(s) ont déposé leurs accusations.`);
+        }
+      }
     }
 
     if (actionsSummary.length > 0) {

@@ -25,6 +25,7 @@ import {
   Crosshair, Skull, Sparkles, Ghost, Trophy, BookOpen,
   CheckCircle2, Ban, Hourglass, Sun, Moon, VenetianMask,
   Info, Users, Dog, TreePine, Bird, ScanSearch, Drama, Gavel,
+  CheckSquare, Square, Megaphone,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
@@ -2156,233 +2157,231 @@ export default function PlayerScreen() {
                   Vous avez été gracié en tant qu'Idiot du Village : vous êtes en vie mais vous ne pouvez plus voter.
                 </p>
               </div>
-            ) : !(salonData?.la_liste_accuses?.length > 0) ? (
-              <div>
-                <p className="text-font text-muted" style={{ marginBottom: '0.75rem', fontSize: '0.88rem' }}>
-                  Phase d'Accusations : Désignez le joueur que vous suspectez d'être un Loup-Garou, ou choisissez de n'accuser personne.
-                </p>
+            ) : (() => {
+              const hasAccusedList = Array.isArray(salonData?.la_liste_accuses) && salonData.la_liste_accuses.length > 0;
+              const rawMonVote = salonData?.votes?.[me.nom];
+              const mesAccusations = Array.isArray(rawMonVote)
+                ? rawMonVote
+                : (rawMonVote ? [rawMonVote] : []);
+              const aChoisiPersonne = mesAccusations.includes('Personne');
 
-                {/* Option N'accuser personne */}
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const newVote = monVote === 'Personne' ? null : 'Personne';
-                      try {
-                        if (newVote === null) {
-                          await updateDoc(doc(db, 'salons', roomId), {
-                            [`votes.${me.nom}`]: deleteField(),
-                          });
-                        } else {
-                          await updateDoc(doc(db, 'salons', roomId), {
-                            [`votes.${me.nom}`]: 'Personne',
-                          });
-                        }
-                      } catch (e) { console.error(e); }
-                    }}
-                    className="text-font"
-                    style={{
-                      width: '100%',
-                      padding: '11px 14px',
-                      borderRadius: '10px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      background: monVote === 'Personne' ? 'rgba(16, 185, 129, 0.22)' : 'var(--input-bg)',
-                      border: monVote === 'Personne' ? '1.5px solid #10b981' : '1px solid var(--card-border)',
-                      color: monVote === 'Personne' ? '#10b981' : 'var(--text-color)',
-                      fontWeight: 700,
-                      transition: 'all 0.2s ease',
-                    }}
-                  >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                      <ShieldCheck size={18} style={{ color: '#10b981' }} />
-                      <span>N'accuser personne (Vote blanc / Grâce)</span>
-                    </span>
-                    {monVote === 'Personne' && (
-                      <span style={{ fontSize: '0.8rem', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <CheckCircle2 size={15} /> Choisi
-                      </span>
-                    )}
-                  </button>
-                </div>
+              // Candidats disponibles à accuser (excluant soi-même)
+              const candidates = hasAccusedList
+                ? salonData.la_liste_accuses.filter(nom => nom !== me.nom)
+                : allAlivePlayers.filter(j => j.id !== me.id).map(j => j.nom);
 
-                {/* Liste de tous les joueurs en vie à accuser */}
-                <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
-                  {allAlivePlayers.filter(j => j.id !== me.id).map(j => {
-                    const isMyVote = monVote === j.nom;
-                    const accusationCount = Object.values(salonData.votes || {}).filter(v => v === j.nom).length;
-                    return (
-                      <li
-                        key={j.id}
-                        onClick={async () => {
-                          const newVote = isMyVote ? null : j.nom;
-                          try {
-                            if (newVote === null) {
-                              await updateDoc(doc(db, 'salons', roomId), {
-                                [`votes.${me.nom}`]: deleteField(),
-                              });
-                            } else {
-                              await updateDoc(doc(db, 'salons', roomId), {
-                                [`votes.${me.nom}`]: j.nom,
-                              });
-                            }
-                          } catch (e) { console.error(e); }
-                        }}
-                        style={{
-                          padding: '10px 14px',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          background: isMyVote ? '#ef4444' : 'rgba(255,255,255,0.05)',
-                          color: isMyVote ? '#fff' : 'var(--text-color)',
-                          border: isMyVote ? '1px solid #b91c1c' : '1px solid var(--card-border)',
-                          transition: 'all 0.2s ease',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontWeight: 700 }}>{j.nom}</span>
-                          {accusationCount > 0 && (
-                            <span style={{ fontSize: '0.72rem', background: isMyVote ? 'rgba(0,0,0,0.3)' : 'rgba(239,68,68,0.18)', color: isMyVote ? '#fff' : '#ef4444', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                              {accusationCount} accusation(s)
-                            </span>
-                          )}
-                        </div>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.82rem', fontWeight: 700 }}>
-                          {isMyVote ? (
-                            <><CheckCircle2 size={15} /> Accusé</>
-                          ) : (
-                            'Accuser'
-                          )}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
+              const isAllCandidatesSelected = candidates.length > 0 && candidates.every(nom => mesAccusations.includes(nom));
 
-                {monVote && (
-                  <p className="text-font" style={{ color: 'var(--success)', marginTop: '0.85rem', textAlign: 'center', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.9rem' }}>
-                    <CheckCircle2 size={16} />
-                    {monVote === 'Personne' ? (
-                      "Vous avez choisi de n'accuser personne."
-                    ) : (
-                      <>Votre accusation contre <strong>{monVote}</strong> est enregistrée.</>
-                    )}
+              const countAccusationsFor = (targetNom) => {
+                let count = 0;
+                Object.values(salonData?.votes || {}).forEach(v => {
+                  if (Array.isArray(v)) {
+                    if (v.includes(targetNom)) count++;
+                  } else if (v === targetNom) {
+                    count++;
+                  }
+                });
+                return count;
+              };
+
+              const handleTogglePlayerAccusation = async (targetNom) => {
+                let next;
+                if (mesAccusations.includes(targetNom)) {
+                  next = mesAccusations.filter(n => n !== targetNom && n !== 'Personne');
+                } else {
+                  next = [...mesAccusations.filter(n => n !== 'Personne'), targetNom];
+                }
+
+                try {
+                  if (next.length === 0) {
+                    await updateDoc(doc(db, 'salons', roomId), {
+                      [`votes.${me.nom}`]: deleteField(),
+                    });
+                  } else {
+                    await updateDoc(doc(db, 'salons', roomId), {
+                      [`votes.${me.nom}`]: next,
+                    });
+                  }
+                } catch (e) {
+                  console.error('Erreur handleTogglePlayerAccusation:', e);
+                }
+              };
+
+              const handleToggleAll = async () => {
+                try {
+                  if (isAllCandidatesSelected) {
+                    await updateDoc(doc(db, 'salons', roomId), {
+                      [`votes.${me.nom}`]: deleteField(),
+                    });
+                  } else {
+                    await updateDoc(doc(db, 'salons', roomId), {
+                      [`votes.${me.nom}`]: candidates,
+                    });
+                  }
+                } catch (e) {
+                  console.error('Erreur handleToggleAll:', e);
+                }
+              };
+
+              const handleToggleNobody = async () => {
+                try {
+                  if (aChoisiPersonne) {
+                    await updateDoc(doc(db, 'salons', roomId), {
+                      [`votes.${me.nom}`]: deleteField(),
+                    });
+                  } else {
+                    await updateDoc(doc(db, 'salons', roomId), {
+                      [`votes.${me.nom}`]: 'Personne',
+                    });
+                  }
+                } catch (e) {
+                  console.error('Erreur handleToggleNobody:', e);
+                }
+              };
+
+              return (
+                <div>
+                  <p className="text-font text-muted" style={{ marginBottom: '0.85rem', fontSize: '0.88rem', lineHeight: '1.4' }}>
+                    {hasAccusedList
+                      ? "Tribunal du Village : Vous pouvez accuser plusieurs personnes, accuser tout le village (tous les suspects) ou choisir de n'accuser personne."
+                      : "Phase d'Accusations : Vous pouvez accuser plusieurs personnes, accuser tout le village, ou choisir de n'accuser personne."}
                   </p>
-                )}
-              </div>
-            ) : (
-              <>
-                <p className="text-font text-muted" style={{ marginBottom: '0.75rem', fontSize: '0.88rem' }}>
-                  Tribunal du Village : Qui souhaitez-vous condamner au bûcher ?
-                </p>
 
-                {/* Option N'accuser personne / Gracier les accusés */}
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const newVote = monVote === 'Personne' ? null : 'Personne';
-                      try {
-                        if (newVote === null) {
-                          await updateDoc(doc(db, 'salons', roomId), {
-                            [`votes.${me.nom}`]: deleteField(),
-                          });
-                        } else {
-                          await updateDoc(doc(db, 'salons', roomId), {
-                            [`votes.${me.nom}`]: 'Personne',
-                          });
-                        }
-                      } catch (e) { console.error(e); }
-                    }}
-                    className="text-font"
-                    style={{
-                      width: '100%',
-                      padding: '11px 14px',
-                      borderRadius: '10px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      background: monVote === 'Personne' ? 'rgba(16, 185, 129, 0.22)' : 'var(--input-bg)',
-                      border: monVote === 'Personne' ? '1.5px solid #10b981' : '1px solid var(--card-border)',
-                      color: monVote === 'Personne' ? '#10b981' : 'var(--text-color)',
-                      fontWeight: 700,
-                      transition: 'all 0.2s ease',
-                    }}
-                  >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                      <ShieldCheck size={18} style={{ color: '#10b981' }} />
-                      <span>N'accuser personne (Gracier les accusés)</span>
-                    </span>
-                    {monVote === 'Personne' && (
-                      <span style={{ fontSize: '0.8rem', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <CheckCircle2 size={15} /> Choisi
+                  {/* Actions rapides globales : Accuser tout le village & N'accuser personne */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', marginBottom: '0.85rem' }}>
+                    <button
+                      type="button"
+                      onClick={handleToggleAll}
+                      className="text-font"
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                        background: isAllCandidatesSelected ? 'rgba(239, 68, 68, 0.22)' : 'var(--input-bg)',
+                        border: isAllCandidatesSelected ? '1.5px solid #ef4444' : '1px solid var(--card-border)',
+                        color: isAllCandidatesSelected ? '#ef4444' : 'var(--text-color)',
+                        fontWeight: 700,
+                        fontSize: '0.84rem',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+                        <Megaphone size={16} style={{ color: isAllCandidatesSelected ? '#ef4444' : 'var(--primary)' }} />
+                        <span>{isAllCandidatesSelected ? "Tout désélectionner" : (hasAccusedList ? "Accuser tous les suspects" : "Accuser tout le village")}</span>
                       </span>
-                    )}
-                  </button>
-                </div>
-
-                <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
-                  {salonData.la_liste_accuses.filter(nom => nom !== me.nom).map(nom => {
-                    const isMyVote = monVote === nom;
-                    return (
-                      <li
-                        key={nom}
-                        onClick={async () => {
-                          const newVote = isMyVote ? null : nom;
-                          try {
-                            if (newVote === null) {
-                              await updateDoc(doc(db, 'salons', roomId), {
-                                [`votes.${me.nom}`]: deleteField(),
-                              });
-                            } else {
-                              await updateDoc(doc(db, 'salons', roomId), {
-                                [`votes.${me.nom}`]: nom,
-                              });
-                            }
-                          } catch (e) { console.error(e); }
-                        }}
-                        style={{
-                          padding: '11px 14px',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          background: isMyVote ? '#ef4444' : 'rgba(255,255,255,0.05)',
-                          color: isMyVote ? '#fff' : 'var(--text-color)',
-                          border: isMyVote ? '1px solid #b91c1c' : '1px solid var(--card-border)',
-                          transition: 'all 0.2s ease',
-                        }}
-                      >
-                        <span style={{ fontWeight: 700 }}>{nom}</span>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.82rem', fontWeight: 700 }}>
-                          {isMyVote ? (
-                            <><CheckCircle2 size={15} /> Vote enregistré</>
-                          ) : (
-                            'Voter contre'
-                          )}
+                      {isAllCandidatesSelected && (
+                        <span style={{ fontSize: '0.75rem', color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <CheckCircle2 size={14} /> Tous
                         </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-                {monVote && (
-                  <p className="text-font" style={{ color: 'var(--success)', marginTop: '0.85rem', textAlign: 'center', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.9rem' }}>
-                    <CheckCircle2 size={16} />
-                    {monVote === 'Personne' ? (
-                      "Vous avez voté pour n'accuser personne."
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleToggleNobody}
+                      className="text-font"
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                        background: aChoisiPersonne ? 'rgba(16, 185, 129, 0.22)' : 'var(--input-bg)',
+                        border: aChoisiPersonne ? '1.5px solid #10b981' : '1px solid var(--card-border)',
+                        color: aChoisiPersonne ? '#10b981' : 'var(--text-color)',
+                        fontWeight: 700,
+                        fontSize: '0.84rem',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+                        <ShieldCheck size={16} style={{ color: '#10b981' }} />
+                        <span>N'accuser personne ({hasAccusedList ? "Grâce" : "Vote blanc"})</span>
+                      </span>
+                      {aChoisiPersonne && (
+                        <span style={{ fontSize: '0.75rem', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <CheckCircle2 size={14} /> Choisi
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Liste des joueurs cibles */}
+                  <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
+                    {candidates.map(nom => {
+                      const isSelected = mesAccusations.includes(nom);
+                      const accusationCount = countAccusationsFor(nom);
+
+                      return (
+                        <li
+                          key={nom}
+                          onClick={() => handleTogglePlayerAccusation(nom)}
+                          style={{
+                            padding: '10px 14px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            background: isSelected ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255, 255, 255, 0.05)',
+                            color: isSelected ? '#fff' : 'var(--text-color)',
+                            border: isSelected ? '1.5px solid #ef4444' : '1px solid var(--card-border)',
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            {isSelected ? (
+                              <CheckSquare size={18} style={{ color: '#ef4444', flexShrink: 0 }} />
+                            ) : (
+                              <Square size={18} style={{ opacity: 0.35, flexShrink: 0 }} />
+                            )}
+                            <span style={{ fontWeight: 700 }}>{nom}</span>
+                            {accusationCount > 0 && (
+                              <span style={{ fontSize: '0.72rem', background: isSelected ? 'rgba(0,0,0,0.3)' : 'rgba(239,68,68,0.18)', color: isSelected ? '#fff' : '#ef4444', padding: '2px 7px', borderRadius: '4px', fontWeight: 700 }}>
+                                {accusationCount} accusation{accusationCount > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.82rem', fontWeight: 700, color: isSelected ? '#ef4444' : 'var(--text-muted)' }}>
+                            {isSelected ? 'Accusé' : 'Accuser'}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+
+                  {/* Bandeau récapitulatif */}
+                  <div style={{ marginTop: '0.85rem', textAlign: 'center', fontSize: '0.88rem' }}>
+                    {aChoisiPersonne ? (
+                      <p className="text-font" style={{ color: 'var(--success)', margin: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <CheckCircle2 size={16} />
+                        <span>Vous avez choisi de n'accuser personne ({hasAccusedList ? "Gracier les accusés" : "Vote blanc / Grâce"}).</span>
+                      </p>
+                    ) : isAllCandidatesSelected ? (
+                      <p className="text-font" style={{ color: '#ef4444', margin: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <CheckCircle2 size={16} />
+                        <span>Vous accusez tout le village ({candidates.length} habitants).</span>
+                      </p>
+                    ) : mesAccusations.length > 0 ? (
+                      <p className="text-font" style={{ color: '#ef4444', margin: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <CheckCircle2 size={16} />
+                        <span>Vous accusez {mesAccusations.length} joueur(s) : <strong>{mesAccusations.join(', ')}</strong></span>
+                      </p>
                     ) : (
-                      <>Votre vote contre <strong>{monVote}</strong> est enregistré.</>
+                      <p className="text-font text-muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+                        Sélectionnez une ou plusieurs personnes à accuser, ou accusez tout le village.
+                      </p>
                     )}
-                  </p>
-                )}
-              </>
-            )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 

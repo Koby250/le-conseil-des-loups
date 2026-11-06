@@ -322,7 +322,10 @@ export async function executeApplyDaySentenceAuto(roomId, salonData, joueurs = [
   Object.entries(votesRaw).forEach(([votant, cible]) => {
     const p = joueurs.find(j => j.nom === votant);
     if (p && p.statut_joueur !== 'mort' && !p.gracie_idiot && cible) {
-      votesCount[cible] = (votesCount[cible] || 0) + 1;
+      const targets = Array.isArray(cible) ? cible : [cible];
+      targets.forEach(t => {
+        if (t) votesCount[t] = (votesCount[t] || 0) + 1;
+      });
     }
   });
 
@@ -706,9 +709,13 @@ export async function runAutoMjStep(roomId, salonData, joueurs = []) {
   if (statut === 'jour_vote') {
     const voters = alivePlayers.filter(j => !j.gracie_idiot);
     const votes = salonData.votes || {};
-    const votedCount = voters.filter(v => votes[v.nom]).length;
+    const votedCount = voters.filter(v => {
+      const val = votes[v.nom];
+      if (Array.isArray(val)) return val.length > 0;
+      return Boolean(val);
+    }).length;
 
-    // Si tout le monde a voté, ou après 45s de délibération
+    // Si tout le monde a voté, ou après 60s de délibération
     if ((voters.length > 0 && votedCount >= voters.length) || elapsedSec >= 60) {
       return await executeApplyDaySentenceAuto(roomId, salonData, joueurs);
     }
