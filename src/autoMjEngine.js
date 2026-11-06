@@ -277,7 +277,7 @@ export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = [
       const gameEnd = checkGameEnd(updatedJoueurs);
 
       const salonUpdates = {
-        statut: gameEnd || 'jour_vote',
+        statut: gameEnd || 'jour_accusation',
         morts_nuit: {
           loups:    diedFromLoups    ? salonData.victime_loups    : null,
           sorciere: diedFromSorciere ? salonData.victime_sorciere : null,
@@ -287,7 +287,10 @@ export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = [
         morts_nuit_details: mortsDetails,
         infection_active: false,
         notif_mj: notifMj,
+        la_liste_accuses: [],
         votes: {},
+        chat_defense: [],
+        phase_started_at: Date.now(),
         auto_mj_phase_started_at: Date.now(),
         auto_mj_last_tick: Date.now(),
       };
@@ -304,27 +307,105 @@ export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = [
 }
 
 /**
+ * Clôture automatique de la phase d'accusations et passage aux défenses (ou directement résolution si 0 accusé).
+ */
+export async function executeCloseAccusationsAuto(roomId, salonData, joueurs = []) {
+  const votesRaw = salonData.votes || {};
+  const accusesCount = {};
+
+  // Pénalité Corbeau
+  if (salonData.cible_corbeau) {
+    const cibleAlive = joueurs.find(j => j.nom === salonData.cible_corbeau && j.statut_joueur !== 'mort');
+    if (cibleAlive) {
+      accusesCount[salonData.cible_corbeau] = (accusesCount[salonData.cible_corbeau] || 0) + 2;
+    }
+  }
+
+  Object.entries(votesRaw).forEach(([votant, cible]) => {
+    const p = joueurs.find(j => j.nom === votant && j.statut_joueur !== 'mort' && !p.gracie_idiot);
+    if (p && cible) {
+      const targets = Array.isArray(cible) ? cible : [cible];
+      targets.forEach(t => {
+        if (t && t !== 'Personne') {
+          accusesCount[t] = (accusesCount[t] || 0) + 1;
+        }
+      });
+    }
+  });
+
+  const finalAccuses = Object.keys(accusesCount).filter(nom => accusesCount[nom] > 0);
+
+  // Si aucun joueur n'a été accusé
+  if (finalAccuses.length === 0) {
+    await updateDoc(doc(db, 'salons', roomId), {
+      statut: 'jour_resolution',
+      condamne_jour: 'Personne (Aucun accusé)',
+      verdict_details: {
+        type: 'personne',
+        raison: "Le village a choisi de n'accuser personne aujourd'hui. Le bûcher reste éteint.",
+        timestamp: Date.now(),
+      },
+      phase_started_at: Date.now(),
+      auto_mj_phase_started_at: Date.now(),
+      auto_mj_last_tick: Date.now(),
+    });
+    return "Aucun accusé désigné : passage à la résolution.";
+  }
+
+  await updateDoc(doc(db, 'salons', roomId), {
+    statut: 'jour_defense',
+    la_liste_accuses: finalAccuses,
+    votes: {},
+    chat_defense: [],
+    phase_started_at: Date.now(),
+    auto_mj_phase_started_at: Date.now(),
+    auto_mj_last_tick: Date.now(),
+  });
+  return `Accusations terminées : ${finalAccuses.length} accusé(s) en défense.`;
+}
+
+/**
+ * Clôture automatique de la phase de défense et passage au vote d'élimination.
+ */
+export async function executeCloseDefenseAuto(roomId, salonData, joueurs = []) {
+  await updateDoc(doc(db, 'salons', roomId), {
+    statut: 'jour_vote',
+    votes: {},
+    phase_started_at: Date.now(),
+    auto_mj_phase_started_at: Date.now(),
+    auto_mj_last_tick: Date.now(),
+  });
+  return "Défenses terminées : ouverture du vote d'élimination.";
+}
+
+/**
  * Résolution automatique du vote du village (passage à 'jour_resolution').
  */
 export async function executeApplyDaySentenceAuto(roomId, salonData, joueurs = []) {
   const votesRaw = salonData.votes || {};
   const votesCount = {};
 
-  // Pénalité Corbeau
-  if (salonData.cible_corbeau) {
+  // Pénalité Corbeau si parmi les accusés
+  const allowedCandidates = Array.isArray(salonData.la_liste_accuses) && salonData.la_liste_accuses.length > 0
+    ? new Set([...salonData.la_liste_accuses, 'Personne'])
+    : null;
+
+  if (salonData.cible_corbeau && (!allowedCandidates || allowedCandidates.has(salonData.cible_corbeau))) {
     const cibleAlive = joueurs.find(j => j.nom === salonData.cible_corbeau && j.statut_joueur !== 'mort');
     if (cibleAlive) {
       votesCount[salonData.cible_corbeau] = (votesCount[salonData.cible_corbeau] || 0) + 2;
     }
   }
 
-  // Agréger votes des vivants autorisés
+  // Agréger votes des vivants autorisés pour l'élimination parmi les accusés
   Object.entries(votesRaw).forEach(([votant, cible]) => {
     const p = joueurs.find(j => j.nom === votant);
     if (p && p.statut_joueur !== 'mort' && !p.gracie_idiot && cible) {
       const targets = Array.isArray(cible) ? cible : [cible];
       targets.forEach(t => {
-        if (t) votesCount[t] = (votesCount[t] || 0) + 1;
+        if (t && (!allowedCandidates || allowedCandidates.has(t))) {
+          votesCount[t] = (votesCount[t] || 0) + 1;
+        }
       });
     }
   });
@@ -705,8 +786,9 @@ export async function runAutoMjStep(roomId, salonData, joueurs = []) {
     return await executeApplyNightDeathsAuto(roomId, salonData, joueurs);
   }
 
-  // 4. JOUR VOTE : Clôture du vote
-  if (statut === 'jour_vote') {
+  // 4. JOUR ACCUSATIONS : Délibérations et désignation des suspects
+  if (statut === 'jour_accusation') {
+    const dureeAccusation = salonData.duree_accusation !== undefined ? salonData.duree_accusation : 60;
     const voters = alivePlayers.filter(j => !j.gracie_idiot);
     const votes = salonData.votes || {};
     const votedCount = voters.filter(v => {
@@ -715,8 +797,33 @@ export async function runAutoMjStep(roomId, salonData, joueurs = []) {
       return Boolean(val);
     }).length;
 
-    // Si tout le monde a voté, ou après 60s de délibération
-    if ((voters.length > 0 && votedCount >= voters.length) || elapsedSec >= 60) {
+    // Si tout le monde a accusé ou si le temps limite d'accusation est atteint
+    if ((voters.length > 0 && votedCount >= voters.length) || (dureeAccusation > 0 && elapsedSec >= dureeAccusation)) {
+      return await executeCloseAccusationsAuto(roomId, salonData, joueurs);
+    }
+  }
+
+  // 5. JOUR DÉFENSE : Plaidoyer des accusés dans le chat de défense
+  if (statut === 'jour_defense') {
+    const dureeDefense = salonData.duree_defense !== undefined ? salonData.duree_defense : 60;
+    if (dureeDefense > 0 && elapsedSec >= dureeDefense) {
+      return await executeCloseDefenseAuto(roomId, salonData, joueurs);
+    }
+  }
+
+  // 6. JOUR VOTE : Clôture du vote d'élimination
+  if (statut === 'jour_vote') {
+    const dureeVote = salonData.duree_vote !== undefined ? salonData.duree_vote : 60;
+    const voters = alivePlayers.filter(j => !j.gracie_idiot);
+    const votes = salonData.votes || {};
+    const votedCount = voters.filter(v => {
+      const val = votes[v.nom];
+      if (Array.isArray(val)) return val.length > 0;
+      return Boolean(val);
+    }).length;
+
+    // Si tout le monde a voté, ou après expiration du délai de vote
+    if ((voters.length > 0 && votedCount >= voters.length) || (dureeVote > 0 && elapsedSec >= dureeVote)) {
       return await executeApplyDaySentenceAuto(roomId, salonData, joueurs);
     }
   }

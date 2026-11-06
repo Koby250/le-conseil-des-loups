@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   PawPrint, Eye, FlaskConical, Crosshair, Wheat, Heart, ScanEye,
   VenetianMask, Music, Laugh, Hourglass, Scale, ShieldCheck, Snowflake,
@@ -689,6 +689,60 @@ export function GrimoireModal({ isOpen, onClose, activeRoleIds = [], onSelectRol
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Horloge dégressive pour les phases de jour (Accusations, Défenses, Votes).
+ */
+export function PhaseTimer({ phaseStartedAt, durationSec, label }) {
+  const [remaining, setRemaining] = useState(() => {
+    if (!phaseStartedAt || !durationSec || durationSec <= 0) return durationSec || 0;
+    const elapsed = Math.floor((Date.now() - phaseStartedAt) / 1000);
+    return Math.max(0, durationSec - elapsed);
+  });
+
+  useEffect(() => {
+    if (!phaseStartedAt || !durationSec || durationSec <= 0) return;
+    const update = () => {
+      const elapsed = Math.floor((Date.now() - phaseStartedAt) / 1000);
+      setRemaining(Math.max(0, durationSec - elapsed));
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [phaseStartedAt, durationSec]);
+
+  if (!durationSec || durationSec <= 0) return null;
+
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  const timeStr = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  const isUrgent = remaining <= 10 && remaining > 0;
+  const isExpired = remaining === 0;
+
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '4px 11px',
+        borderRadius: '20px',
+        background: isExpired
+          ? 'rgba(239,68,68,0.22)'
+          : isUrgent
+            ? 'rgba(245,158,11,0.22)'
+            : 'rgba(255,255,255,0.08)',
+        border: `1.5px solid ${isExpired ? '#ef4444' : isUrgent ? '#f59e0b' : 'var(--card-border)'}`,
+        color: isExpired ? '#ef4444' : isUrgent ? '#f59e0b' : 'var(--text-color)',
+        fontWeight: 700,
+        fontSize: '0.84rem',
+      }}
+    >
+      <Hourglass size={14} style={{ color: isExpired ? '#ef4444' : isUrgent ? '#f59e0b' : 'var(--primary)' }} />
+      <span>{label ? `${label} : ` : ''}{isExpired ? 'Temps écoulé !' : timeStr}</span>
     </div>
   );
 }

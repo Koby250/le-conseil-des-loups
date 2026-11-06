@@ -36,7 +36,7 @@ export const ALL_NIGHT_PHASES = [
   'nuit_voleur',
 ];
 
-export const DAY_PHASES = ['matin', 'jour_vote', 'jour_resolution'];
+export const DAY_PHASES = ['matin', 'jour_accusation', 'jour_defense', 'jour_vote', 'jour_resolution'];
 
 /** Métadonnées d'affichage de chaque phase. */
 export const PHASE_META = {
@@ -49,7 +49,9 @@ export const PHASE_META = {
   nuit_sorciere:   { label: 'Sorcière',           kind: 'night', roleId: 'sorciere',  text: 'La Sorcière prépare ses potions…' },
   nuit_voleur:     { label: 'Voleur',             kind: 'night', roleId: 'voleur',    text: 'Le Voleur rôde en silence…' },
   matin:           { label: 'Lever du jour',      kind: 'day' },
-  jour_vote:       { label: 'Vote du village',    kind: 'day' },
+  jour_accusation: { label: 'Accusations',        kind: 'day' },
+  jour_defense:    { label: 'Défenses des accusés', kind: 'day' },
+  jour_vote:       { label: 'Vote d\'élimination', kind: 'day' },
   jour_resolution: { label: 'Sentence',           kind: 'day' },
   fin_village:     { label: 'Victoire du village', kind: 'end' },
   fin_loups:       { label: 'Victoire des loups', kind: 'end' },

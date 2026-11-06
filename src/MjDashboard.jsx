@@ -14,7 +14,7 @@ import {
 } from './gameLogic';
 import {
   RoleIcon, RoleMedallion, RoleChip,
-  RoleDetailsModal, GrimoireModal, AutomationBadge,
+  RoleDetailsModal, GrimoireModal, AutomationBadge, PhaseTimer,
 } from './RoleComponents';
 import {
   WolfPackChat, AccusedDefenseChat, MjMessengerPanel,
@@ -30,7 +30,7 @@ import {
   Heart, VenetianMask, FlaskConical, Gavel, Trophy,
   CheckCircle2, AlertTriangle, Hourglass, Megaphone,
   Lock, Unlock, Sparkles, Sword, Bird, X, Bot, User, MoveHorizontal,
-  RotateCcw, Edit3,
+  RotateCcw, Edit3, Clock, Drama,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
@@ -77,6 +77,160 @@ const PHASE_BADGE_META = {
   nuit_sorciere:  { label: 'Sorcière',      roleId: 'sorciere' },
 };
 
+/**
+ * Modal de réglage des durées des phases de jour par le Maître du Jeu.
+ */
+function GameTimeSettingsModal({ isOpen, onClose, roomId, salonData }) {
+  const [dureeAccusation, setDureeAccusation] = useState(salonData?.duree_accusation ?? 60);
+  const [dureeDefense, setDureeDefense]       = useState(salonData?.duree_defense ?? 60);
+  const [dureeVote, setDureeVote]             = useState(salonData?.duree_vote ?? 60);
+
+  useEffect(() => {
+    if (salonData) {
+      if (salonData.duree_accusation !== undefined) setDureeAccusation(salonData.duree_accusation);
+      if (salonData.duree_defense !== undefined)    setDureeDefense(salonData.duree_defense);
+      if (salonData.duree_vote !== undefined)       setDureeVote(salonData.duree_vote);
+    }
+  }, [salonData?.duree_accusation, salonData?.duree_defense, salonData?.duree_vote]);
+
+  if (!isOpen) return null;
+
+  const presets = [30, 45, 60, 90, 120, 180];
+
+  const handleSave = async () => {
+    try {
+      await updateDoc(doc(db, 'salons', roomId), {
+        duree_accusation: Number(dureeAccusation) || 60,
+        duree_defense:    Number(dureeDefense) || 60,
+        duree_vote:       Number(dureeVote) || 60,
+      });
+      onClose();
+    } catch (e) {
+      console.error(e);
+      alert('Erreur lors de la sauvegarde des durées.');
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div className="glass-panel" style={{ width: '100%', maxWidth: '520px', borderRadius: '1rem', padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--card-border)', paddingBottom: '0.75rem' }}>
+          <h3 className="title-font" style={{ margin: 0, fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Clock size={20} style={{ color: 'var(--primary)' }} />
+            Paramètres des Temps de Jeu (Journée)
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <p className="text-font text-muted" style={{ fontSize: '0.86rem', marginBottom: '1.25rem' }}>
+          Définissez la durée allouée pour chaque phase diurne. Le Maître du Jeu peut toujours avancer manuellement à tout moment si tout le monde a terminé.
+        </p>
+
+        {/* 1. Accusations */}
+        <div style={{ marginBottom: '1.15rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem', fontWeight: 700 }}>
+            <span>Temps d'Accusations :</span>
+            <span style={{ color: 'var(--primary)' }}>{dureeAccusation} secondes</span>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {presets.map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setDureeAccusation(s)}
+                className="text-font"
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '16px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: dureeAccusation === s ? 'var(--primary)' : 'rgba(255,255,255,0.06)',
+                  color: dureeAccusation === s ? '#fff' : 'var(--text-color)',
+                  border: dureeAccusation === s ? '1px solid var(--primary)' : '1px solid var(--card-border)',
+                }}
+              >
+                {s}s
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 2. Défenses */}
+        <div style={{ marginBottom: '1.15rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem', fontWeight: 700 }}>
+            <span>Temps de Défense des Accusés :</span>
+            <span style={{ color: '#8b5cf6' }}>{dureeDefense} secondes</span>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {presets.map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setDureeDefense(s)}
+                className="text-font"
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '16px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: dureeDefense === s ? '#8b5cf6' : 'rgba(255,255,255,0.06)',
+                  color: dureeDefense === s ? '#fff' : 'var(--text-color)',
+                  border: dureeDefense === s ? '1px solid #8b5cf6' : '1px solid var(--card-border)',
+                }}
+              >
+                {s}s
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. Vote d'élimination */}
+        <div style={{ marginBottom: '1.4rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem', fontWeight: 700 }}>
+            <span>Temps de Vote d'Élimination :</span>
+            <span style={{ color: '#ef4444' }}>{dureeVote} secondes</span>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {presets.map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setDureeVote(s)}
+                className="text-font"
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '16px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: dureeVote === s ? '#ef4444' : 'rgba(255,255,255,0.06)',
+                  color: dureeVote === s ? '#fff' : 'var(--text-color)',
+                  border: dureeVote === s ? '1px solid #ef4444' : '1px solid var(--card-border)',
+                }}
+              >
+                {s}s
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose} className="btn-secondary text-font" style={{ padding: '8px 16px' }}>
+            Annuler
+          </button>
+          <button type="button" onClick={handleSave} className="btn-primary title-font glow-button" style={{ padding: '8px 20px' }}>
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MjDashboard() {
   const { roomId } = useParams();
 
@@ -92,8 +246,9 @@ export default function MjDashboard() {
   const [isGenerating, setIsGenerating]         = useState(false);
 
   // ── Modals Grimoire & Fiches Rôles pour le MJ ─────────────────────────────
-  const [inspectRole, setInspectRole]   = useState(null);
-  const [showGrimoire, setShowGrimoire] = useState(false);
+  const [inspectRole, setInspectRole]       = useState(null);
+  const [showGrimoire, setShowGrimoire]     = useState(false);
+  const [showTimeSettings, setShowTimeSettings] = useState(false);
 
   const activeRoleIds = salonData?.roles_selectionnes || selectedRoles || [];
 
@@ -202,6 +357,10 @@ export default function MjDashboard() {
         // ── Champs jour ──
         la_liste_accuses: [],
         votes: {},
+        // ── Durées paramétrables du jour (secondes) ──
+        duree_accusation: 60,
+        duree_defense: 60,
+        duree_vote: 60,
         // ── Chats & Messagerie ──
         chat_loups: [],
         chat_defense: [],
@@ -559,7 +718,7 @@ export default function MjDashboard() {
         }
 
         const salonUpdates = {
-          statut: 'jour_vote',
+          statut: 'jour_accusation',
           morts_nuit: {
             loups:    diedFromLoups    ? salonData.victime_loups    : null,
             sorciere: diedFromSorciere ? salonData.victime_sorciere : null,
@@ -569,7 +728,11 @@ export default function MjDashboard() {
           morts_nuit_details: mortsNuitDetails,
           infection_active: false,
           notif_mj: notifMj,
+          la_liste_accuses: [],
           votes: {},
+          chat_defense: [],
+          phase_started_at: Date.now(),
+          auto_mj_phase_started_at: Date.now(),
         };
         if (newNotifications.length > 0) {
           salonUpdates.notifications_mj = arrayUnion(...newNotifications);
@@ -583,14 +746,95 @@ export default function MjDashboard() {
   };
 
   /**
-   * Résolution du vote du jour.
+   * Clôture des accusations et passage aux défenses (ou direct sentence si aucun accusé).
+   */
+  const handleCloseAccusationsAndStartDefense = async () => {
+    const votesRaw = salonData.votes || {};
+    const accusesCount = {};
+
+    if (salonData.cible_corbeau) {
+      const cibleCorbeauAlive = joueurs.find(j => j.nom === salonData.cible_corbeau && j.statut_joueur !== 'mort');
+      if (cibleCorbeauAlive) {
+        accusesCount[salonData.cible_corbeau] = (accusesCount[salonData.cible_corbeau] || 0) + 2;
+      }
+    }
+
+    Object.entries(votesRaw).forEach(([votant, cible]) => {
+      const votantPlayer = joueurs.find(j => j.nom === votant);
+      if (votantPlayer && votantPlayer.statut_joueur !== 'mort' && !votantPlayer.gracie_idiot && cible) {
+        const targets = Array.isArray(cible) ? cible : [cible];
+        targets.forEach(t => {
+          if (t && t !== 'Personne') {
+            accusesCount[t] = (accusesCount[t] || 0) + 1;
+          }
+        });
+      }
+    });
+
+    let finalAccuses = Object.keys(accusesCount).filter(nom => accusesCount[nom] > 0);
+    if (accusesMJ.length > 0) {
+      finalAccuses = [...new Set([...finalAccuses, ...accusesMJ])];
+    }
+
+    if (finalAccuses.length === 0) {
+      if (!window.confirm("Aucun habitant n'a été accusé par le village. Passer à la nuit sans aucun éliminé ?")) return;
+      try {
+        await updateDoc(doc(db, 'salons', roomId), {
+          statut: 'jour_resolution',
+          condamne_jour: 'Personne (Aucun accusé)',
+          verdict_details: {
+            type: 'personne',
+            raison: "Le village a choisi de n'accuser personne aujourd'hui. Aucun habitant n'est éliminé.",
+            timestamp: Date.now(),
+          },
+          phase_started_at: Date.now(),
+          auto_mj_phase_started_at: Date.now(),
+        });
+      } catch (e) { console.error(e); }
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'salons', roomId), {
+        statut: 'jour_defense',
+        la_liste_accuses: finalAccuses,
+        votes: {},
+        chat_defense: [],
+        phase_started_at: Date.now(),
+        auto_mj_phase_started_at: Date.now(),
+      });
+      setAccusesMJ([]);
+    } catch (e) { console.error(e); }
+  };
+
+  /**
+   * Clôture des défenses et ouverture du vote d'élimination parmi les accusés.
+   */
+  const handleCloseDefenseAndStartVote = async () => {
+    try {
+      await updateDoc(doc(db, 'salons', roomId), {
+        statut: 'jour_vote',
+        votes: {},
+        phase_started_at: Date.now(),
+        auto_mj_phase_started_at: Date.now(),
+      });
+    } catch (e) { console.error(e); }
+  };
+
+  /**
+   * Résolution du vote d'élimination du jour.
    */
   const handleApplyDaySentence = async () => {
     const votesRaw   = salonData.votes || {};
     const votesCount = {};
 
-    // Pénalité du Corbeau (+2 voix d'office)
-    if (salonData.cible_corbeau) {
+    // Seuls les accusés et 'Personne' sont éligibles
+    const allowedCandidates = Array.isArray(salonData.la_liste_accuses) && salonData.la_liste_accuses.length > 0
+      ? new Set([...salonData.la_liste_accuses, 'Personne'])
+      : null;
+
+    // Pénalité du Corbeau (+2 voix d'office si parmi les accusés)
+    if (salonData.cible_corbeau && (!allowedCandidates || allowedCandidates.has(salonData.cible_corbeau))) {
       const cibleCorbeauAlive = joueurs.find(j => j.nom === salonData.cible_corbeau && j.statut_joueur !== 'mort');
       if (cibleCorbeauAlive) {
         votesCount[salonData.cible_corbeau] = (votesCount[salonData.cible_corbeau] || 0) + 2;
@@ -603,7 +847,9 @@ export default function MjDashboard() {
       if (votantPlayer && votantPlayer.statut_joueur !== 'mort' && !votantPlayer.gracie_idiot && cible) {
         const targets = Array.isArray(cible) ? cible : [cible];
         targets.forEach(t => {
-          if (t) votesCount[t] = (votesCount[t] || 0) + 1;
+          if (t && (!allowedCandidates || allowedCandidates.has(t))) {
+            votesCount[t] = (votesCount[t] || 0) + 1;
+          }
         });
       }
     });
@@ -1364,6 +1610,17 @@ export default function MjDashboard() {
 
           <button
             type="button"
+            onClick={() => setShowTimeSettings(true)}
+            className="btn-secondary text-font border-accent"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+            title="Régler les durées des accusations, défenses et votes de la journée"
+          >
+            <Clock size={16} style={{ color: 'var(--primary)' }} />
+            <span>Durées ({salonData?.duree_accusation || 60}s / {salonData?.duree_defense || 60}s / {salonData?.duree_vote || 60}s)</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowGrimoire(true)}
             className="btn-secondary text-font border-accent"
           >
@@ -1481,6 +1738,38 @@ export default function MjDashboard() {
               >
                 <Plus size={18} /> Ajouter une place (Simple Villageois)
               </button>
+            </div>
+
+            {/* Paramètres des Durées de la Journée configurables avant le lancement */}
+            <div style={{ background: 'var(--input-bg)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--card-border)', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <h4 className="title-font" style={{ margin: 0, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Clock size={16} style={{ color: 'var(--primary)' }} />
+                  Durées de la Journée
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowTimeSettings(true)}
+                  className="btn-secondary text-font"
+                  style={{ fontSize: '0.78rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <Edit3 size={13} /> Modifier les durées
+                </button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', fontSize: '0.82rem' }}>
+                <div style={{ padding: '6px 10px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--card-border)' }}>
+                  <span className="text-muted" style={{ display: 'block', fontSize: '0.72rem' }}>Accusations</span>
+                  <strong style={{ color: 'var(--primary)' }}>{salonData.duree_accusation || 60}s</strong>
+                </div>
+                <div style={{ padding: '6px 10px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--card-border)' }}>
+                  <span className="text-muted" style={{ display: 'block', fontSize: '0.72rem' }}>Défenses</span>
+                  <strong style={{ color: '#8b5cf6' }}>{salonData.duree_defense || 60}s</strong>
+                </div>
+                <div style={{ padding: '6px 10px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--card-border)' }}>
+                  <span className="text-muted" style={{ display: 'block', fontSize: '0.72rem' }}>Vote Final</span>
+                  <strong style={{ color: '#ef4444' }}>{salonData.duree_vote || 60}s</strong>
+                </div>
+              </div>
             </div>
             <button
               onClick={handleStartGame}
@@ -1711,8 +2000,8 @@ export default function MjDashboard() {
           </div>
         )}
 
-        {/* JOUR VOTE */}
-        {isPhase('jour_vote') && (
+        {/* JOURNÉE : ACCUSATIONS, DÉFENSES ET VOTE */}
+        {(isPhase('jour_accusation') || isPhase('jour_defense') || isPhase('jour_vote')) && (
           <div>
             {/* Verdict de la nuit */}
             {(() => {
@@ -1751,14 +2040,30 @@ export default function MjDashboard() {
               </div>
             )}
 
-            {!(salonData.la_liste_accuses?.length > 0) ? (
+            {/* ── PHASE 1 : ACCUSATIONS DU VILLAGE ── */}
+            {isPhase('jour_accusation') && (
               <div style={{ background: 'var(--input-bg)', padding: '1.25rem', borderRadius: '12px', marginBottom: '1rem', border: '1px solid var(--card-border)' }}>
-                <h4 className="title-font" style={{ marginBottom: '10px', color: 'var(--text-color)' }}>
-                  Désigner les joueurs accusés au vote :
-                </h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <h4 className="title-font" style={{ margin: 0, color: 'var(--text-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Megaphone size={18} style={{ color: 'var(--primary)' }} />
+                    Phase 1 : Accusations du Village
+                  </h4>
+                  <PhaseTimer
+                    phaseStartedAt={salonData.phase_started_at}
+                    durationSec={salonData.duree_accusation !== undefined ? salonData.duree_accusation : 60}
+                    label="Chrono Accusations"
+                  />
+                </div>
+
+                <p className="text-font text-muted" style={{ fontSize: '0.86rem', marginBottom: '1rem' }}>
+                  Les villageois (et IA) désignent les suspects à traduire au tribunal. Les joueurs ayant reçu au moins 1 accusation passeront en phase de défense.
+                </p>
+
                 <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1rem', maxHeight: '280px', overflowY: 'auto' }}>
                   {alivePlayers.map(j => {
                     const isSel = accusesMJ.includes(j.nom);
+                    const accusationCount = Object.values(salonData.votes || {}).filter(v => Array.isArray(v) ? v.includes(j.nom) : v === j.nom).length;
+
                     return (
                       <li
                         key={j.id}
@@ -1773,24 +2078,28 @@ export default function MjDashboard() {
                           fontWeight: isSel ? 'bold' : 'normal',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '8px',
+                          justifyContent: 'space-between',
                         }}
                       >
-                        <CheckCircle2 size={16} style={{ opacity: isSel ? 1 : 0.25 }} />
-                        <span>{j.nom}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <CheckCircle2 size={16} style={{ opacity: isSel ? 1 : 0.25 }} />
+                          <span>{j.nom}</span>
+                        </div>
+                        {accusationCount > 0 && (
+                          <span style={{ fontSize: '0.75rem', background: 'rgba(239,68,68,0.2)', color: '#fca5a5', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                            {accusationCount} accusation(s)
+                          </span>
+                        )}
                       </li>
                     );
                   })}
                 </ul>
+
                 <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
                   <button
                     onClick={() => {
                       const isAll = alivePlayers.length > 0 && alivePlayers.every(j => accusesMJ.includes(j.nom));
-                      if (isAll) {
-                        setAccusesMJ([]);
-                      } else {
-                        setAccusesMJ(alivePlayers.map(j => j.nom));
-                      }
+                      setAccusesMJ(isAll ? [] : alivePlayers.map(j => j.nom));
                     }}
                     className="btn-secondary text-font"
                     style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
@@ -1803,93 +2112,54 @@ export default function MjDashboard() {
                     </span>
                   </button>
                   <button
-                    disabled={accusesMJ.length === 0}
-                    onClick={async () => {
-                      try {
-                        await updateDoc(doc(db, 'salons', roomId), { la_liste_accuses: accusesMJ });
-                        setAccusesMJ([]);
-                      } catch (e) { console.error(e); }
-                    }}
+                    onClick={handleCloseAccusationsAndStartDefense}
                     className="btn-primary title-font glow-button"
                   >
-                    <Unlock size={18} /> Ouvrir le vote sur les smartphones ({accusesMJ.length} accusés)
+                    <ChevronRight size={18} /> Clôturer les Accusations & Passer aux Défenses
                   </button>
                 </div>
               </div>
-            ) : (
-              <>
-                <div style={{ background: 'var(--input-bg)', padding: '1.25rem', borderRadius: '12px', marginBottom: '1rem', border: '1px solid var(--card-border)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <h4 className="title-font" style={{ color: 'var(--text-color)', margin: 0 }}>Urne en temps réel :</h4>
+            )}
+
+            {/* ── PHASE 2 : DÉFENSE DES ACCUSÉS ── */}
+            {isPhase('jour_defense') && (
+              <div style={{ background: 'var(--input-bg)', padding: '1.25rem', borderRadius: '12px', marginBottom: '1rem', border: '1px solid var(--card-border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <h4 className="title-font" style={{ margin: 0, color: 'var(--text-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Drama size={18} style={{ color: '#8b5cf6' }} />
+                    Phase 2 : Défense des Accusés
+                  </h4>
+                  <PhaseTimer
+                    phaseStartedAt={salonData.phase_started_at}
+                    durationSec={salonData.duree_defense !== undefined ? salonData.duree_defense : 60}
+                    label="Chrono Défenses"
+                  />
+                </div>
+
+                <p className="text-font text-muted" style={{ fontSize: '0.86rem', marginBottom: '0.85rem' }}>
+                  Les accusés suivants ont la parole pour convaincre le village :
+                </p>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+                  {salonData.la_liste_accuses?.map(nom => (
                     <span
-                      className="text-font"
-                      style={{ fontSize: '0.82rem', color: nbVotesDeposes === eligibleVoters.length ? '#10b981' : 'var(--text-muted)', background: 'rgba(255,255,255,0.08)', padding: '4px 10px', borderRadius: '1rem', fontWeight: 'bold' }}
+                      key={nom}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '20px',
+                        background: 'rgba(239,68,68,0.2)',
+                        border: '1.5px solid #ef4444',
+                        color: '#fca5a5',
+                        fontWeight: 700,
+                        fontSize: '0.9rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
                     >
-                      {nbVotesDeposes}/{eligibleVoters.length} votes déposés
+                      <AlertTriangle size={14} /> {nom}
                     </span>
-                  </div>
-
-                  {/* Actions rapides MJ sur les accusés */}
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px', paddingTop: '6px', borderTop: '1px solid var(--card-border)' }}>
-                    {salonData.la_liste_accuses.length < alivePlayers.length && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await updateDoc(doc(db, 'salons', roomId), {
-                              la_liste_accuses: alivePlayers.map(j => j.nom),
-                            });
-                          } catch (e) { console.error(e); }
-                        }}
-                        className="btn-secondary text-font"
-                        style={{ fontSize: '0.8rem', padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-                      >
-                        <Megaphone size={14} style={{ color: 'var(--primary)' }} />
-                        <span>Accuser tout le village ({alivePlayers.length})</span>
-                      </button>
-                    )}
-                    <button
-                      onClick={async () => {
-                        setAccusesMJ(salonData.la_liste_accuses || []);
-                        try {
-                          await updateDoc(doc(db, 'salons', roomId), { la_liste_accuses: [] });
-                        } catch (e) { console.error(e); }
-                      }}
-                      className="btn-secondary text-font"
-                      style={{ fontSize: '0.8rem', padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-                    >
-                      <Edit3 size={14} />
-                      <span>Modifier les accusés</span>
-                    </button>
-                    <button
-                      onClick={async () => {
-                        if (!window.confirm("Réinitialiser les accusés et les votes pour repasser en accusations libres ?")) return;
-                        try {
-                          await updateDoc(doc(db, 'salons', roomId), {
-                            la_liste_accuses: [],
-                            votes: {},
-                          });
-                        } catch (e) { console.error(e); }
-                      }}
-                      className="btn-secondary text-font"
-                      style={{ fontSize: '0.8rem', padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#ef4444' }}
-                    >
-                      <RotateCcw size={14} />
-                      <span>Réinitialiser</span>
-                    </button>
-                  </div>
-
-                  {Object.entries(votesCountJour).length === 0 ? (
-                    <p className="text-muted text-font">Aucun vote pour l'instant.</p>
-                  ) : (
-                    <ul style={{ listStyle: 'none', padding: 0 }} className="text-font">
-                      {Object.entries(votesCountJour).sort((a, b) => b[1] - a[1]).map(([nom, count]) => (
-                        <li key={nom} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--card-border)', color: 'var(--text-color)' }}>
-                          <span>{nom === 'Personne' ? "Personne (Vote blanc / Grâce)" : nom}</span>
-                          <strong style={{ color: nom === 'Personne' ? '#10b981' : '#ef4444' }}>{count} voix</strong>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  ))}
                 </div>
 
                 {/* Chat de défense des accusés */}
@@ -1901,6 +2171,80 @@ export default function MjDashboard() {
                     isMj={true}
                   />
                 </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <button
+                    onClick={handleCloseDefenseAndStartVote}
+                    className="btn-primary title-font glow-button"
+                    style={{ background: '#8b5cf6' }}
+                  >
+                    <Gavel size={18} /> Clôturer les Défenses & Lancer le Vote Final
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm("Gracier les accusés et passer à la nuit sans aucun éliminé ?")) return;
+                      try {
+                        await updateDoc(doc(db, 'salons', roomId), {
+                          statut: 'jour_resolution',
+                          condamne_jour: 'Personne (Grâce du village)',
+                          verdict_details: {
+                            type: 'personne',
+                            raison: "Le village a été convaincu par les défenses : aucun habitant n'est éliminé.",
+                            timestamp: Date.now(),
+                          },
+                          phase_started_at: Date.now(),
+                          auto_mj_phase_started_at: Date.now(),
+                        });
+                      } catch (e) { console.error(e); }
+                    }}
+                    className="btn-secondary text-font"
+                    style={{ width: '100%' }}
+                  >
+                    Gracier les accusés (Annuler le bûcher)
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── PHASE 3 : VOTE D'ÉLIMINATION ── */}
+            {isPhase('jour_vote') && (
+              <div style={{ background: 'var(--input-bg)', padding: '1.25rem', borderRadius: '12px', marginBottom: '1rem', border: '1px solid var(--card-border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <h4 className="title-font" style={{ color: 'var(--text-color)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Gavel size={18} style={{ color: '#ef4444' }} />
+                    Phase 3 : Vote d'Élimination parmi les Accusés
+                  </h4>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <PhaseTimer
+                      phaseStartedAt={salonData.phase_started_at}
+                      durationSec={salonData.duree_vote !== undefined ? salonData.duree_vote : 60}
+                      label="Chrono Vote"
+                    />
+                    <span
+                      className="text-font"
+                      style={{ fontSize: '0.82rem', color: nbVotesDeposes === eligibleVoters.length ? '#10b981' : 'var(--text-muted)', background: 'rgba(255,255,255,0.08)', padding: '4px 10px', borderRadius: '1rem', fontWeight: 'bold' }}
+                    >
+                      {nbVotesDeposes}/{eligibleVoters.length} votes déposés
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-font text-muted" style={{ fontSize: '0.86rem', marginBottom: '1rem' }}>
+                  Les villageois votent pour choisir l'unique habitant à éliminer parmi les accusés ({salonData.la_liste_accuses?.join(', ')}).
+                </p>
+
+                {Object.entries(votesCountJour).length === 0 ? (
+                  <p className="text-muted text-font">Aucun vote déposé pour l'instant.</p>
+                ) : (
+                  <ul style={{ listStyle: 'none', padding: 0, marginBottom: '1.25rem' }} className="text-font">
+                    {Object.entries(votesCountJour).sort((a, b) => b[1] - a[1]).map(([nom, count]) => (
+                      <li key={nom} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--card-border)', color: 'var(--text-color)' }}>
+                        <span>{nom === 'Personne' ? "Personne (Vote blanc / Grâce)" : nom}</span>
+                        <strong style={{ color: nom === 'Personne' ? '#10b981' : '#ef4444' }}>{count} voix</strong>
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
                 {chasseurActif ? (
                   <button disabled className="btn-secondary title-font" style={{ width: '100%', padding: '15px' }}>
@@ -1927,6 +2271,8 @@ export default function MjDashboard() {
                               raison: "Le Maître du Jeu a accordé la grâce du village : aucun habitant n'a été éliminé.",
                               timestamp: Date.now(),
                             },
+                            phase_started_at: Date.now(),
+                            auto_mj_phase_started_at: Date.now(),
                           });
                         } catch (e) { console.error(e); }
                       }}
@@ -1937,7 +2283,7 @@ export default function MjDashboard() {
                     </button>
                   </div>
                 )}
-              </>
+              </div>
             )}
           </div>
         )}
@@ -2292,6 +2638,12 @@ export default function MjDashboard() {
         onClose={() => setShowGrimoire(false)}
         onSelectRole={role => setInspectRole(role)}
         activeRoleIds={activeRoleIds}
+      />
+      <GameTimeSettingsModal
+        isOpen={showTimeSettings}
+        onClose={() => setShowTimeSettings(false)}
+        roomId={roomId}
+        salonData={salonData}
       />
     </div>
   );

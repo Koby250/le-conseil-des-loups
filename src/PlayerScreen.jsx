@@ -10,7 +10,7 @@ import { rolesData, getRole } from './rolesData';
 import { isWolf, ALL_NIGHT_PHASES, DAY_PHASES, phaseLabel } from './gameLogic';
 import {
   RoleIcon, RoleMedallion, CampBadge, RoleChip,
-  RoleCardView, RoleDetailsModal, GrimoireModal,
+  RoleCardView, RoleDetailsModal, GrimoireModal, PhaseTimer,
 } from './RoleComponents';
 import {
   WolfPackChat,
@@ -231,7 +231,7 @@ function VerdictResolutionCard({ roomId, salonData, joueurs, onSelectRole, isMai
  * Affiche clairement les victimes avec leur rôle révélé au grand jour.
  */
 function NightResolutionCard({ salonData, joueurs, onSelectRole }) {
-  if (salonData?.statut !== 'jour_vote' && salonData?.statut !== 'matin') return null;
+  if (!['matin', 'jour_accusation', 'jour_defense', 'jour_vote'].includes(salonData?.statut)) return null;
 
   const nightVictims = [];
   const seenNames = new Set();
@@ -1178,7 +1178,7 @@ export default function PlayerScreen() {
           )}
 
           {/* Chat de défense des accusés en lecture seule pour les fantômes */}
-          {salonData.statut === 'jour_vote' && salonData?.la_liste_accuses?.length > 0 && (
+          {(salonData.statut === 'jour_defense' || salonData.statut === 'jour_vote') && salonData?.la_liste_accuses?.length > 0 && (
             <div style={{ marginBottom: '1rem' }}>
               <AccusedDefenseChat
                 roomId={roomId}
@@ -2107,69 +2107,34 @@ export default function PlayerScreen() {
           )}
         </div>
 
-        {/* ── VOTE DU VILLAGE (JOUR_VOTE) ─────────────────────────────────── */}
-        {salonData.statut === 'jour_vote' && (
+        {/* ── 1. PHASE D'ACCUSATIONS DU VILLAGE (JOUR_ACCUSATION) ─────────── */}
+        {salonData.statut === 'jour_accusation' && (
           <div style={{ marginTop: '1.5rem', textAlign: 'left' }}>
-            <h3 className="title-font" style={{ color: '#f59e0b', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.15rem' }}>
-              <Sun size={20} /> Vote du Village
-            </h3>
-
-            {/* Pouvoir Illusionniste */}
-            {me.role === 'illusionniste' && me.illusion_dispo && salonData?.la_liste_accuses?.includes(me.nom) && (
-              <div style={{ marginBottom: '1rem', padding: '1rem', background: 'rgba(139,92,246,0.15)', border: '1.5px solid #8b5cf6', borderRadius: '12px' }}>
-                <h4 className="title-font" style={{ color: '#c4b5fd', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Sparkles size={16} /> Pouvoir de l'Illusionniste
-                </h4>
-                <p className="text-font" style={{ fontSize: '0.85rem', marginBottom: '0.85rem' }}>
-                  Vous faites partie des accusés. Activez votre illusion pour survivre si le village vous condamne aujourd'hui.
-                </p>
-                <button
-                  onClick={async () => {
-                    if (!window.confirm("Activer l'Illusion pour ce vote ?")) return;
-                    try {
-                      await updateDoc(doc(db, 'salons', roomId), { illusion_active: true });
-                      await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { illusion_dispo: false });
-                    } catch (e) { console.error(e); }
-                  }}
-                  className="btn-primary title-font glow-button"
-                  style={{ background: '#8b5cf6' }}
-                >
-                  <Sparkles size={16} /> Activer mon Illusion secrète
-                </button>
-              </div>
-            )}
-
-            {/* Chat de Défense des Accusés (ouvert dès que la liste des accusés est ouverte) */}
-            {salonData?.la_liste_accuses?.length > 0 && (
-              <div style={{ marginBottom: '1.15rem' }}>
-                <AccusedDefenseChat
-                  roomId={roomId}
-                  salonData={salonData}
-                  senderName={me.nom}
-                  isDead={false}
-                />
-              </div>
-            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '8px' }}>
+              <h3 className="title-font" style={{ color: '#f59e0b', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.15rem' }}>
+                <Megaphone size={20} /> Phase d'Accusations
+              </h3>
+              <PhaseTimer
+                phaseStartedAt={salonData.phase_started_at}
+                durationSec={salonData.duree_accusation !== undefined ? salonData.duree_accusation : 60}
+                label="Temps d'accusation"
+              />
+            </div>
 
             {me.gracie_idiot ? (
               <div style={{ padding: '1rem', background: 'rgba(132,204,22,0.12)', border: '1.5px solid #84cc16', borderRadius: '12px', textAlign: 'center' }}>
                 <p className="text-font" style={{ margin: 0, color: '#a3e635', fontWeight: 700, fontSize: '0.9rem' }}>
-                  Vous avez été gracié en tant qu'Idiot du Village : vous êtes en vie mais vous ne pouvez plus voter.
+                  Vous avez été gracié en tant qu'Idiot du Village : vous êtes en vie mais vous ne pouvez plus accuser ni voter.
                 </p>
               </div>
             ) : (() => {
-              const hasAccusedList = Array.isArray(salonData?.la_liste_accuses) && salonData.la_liste_accuses.length > 0;
               const rawMonVote = salonData?.votes?.[me.nom];
               const mesAccusations = Array.isArray(rawMonVote)
                 ? rawMonVote
                 : (rawMonVote ? [rawMonVote] : []);
               const aChoisiPersonne = mesAccusations.includes('Personne');
 
-              // Candidats disponibles à accuser (excluant soi-même)
-              const candidates = hasAccusedList
-                ? salonData.la_liste_accuses.filter(nom => nom !== me.nom)
-                : allAlivePlayers.filter(j => j.id !== me.id).map(j => j.nom);
-
+              const candidates = allAlivePlayers.filter(j => j.id !== me.id).map(j => j.nom);
               const isAllCandidatesSelected = candidates.length > 0 && candidates.every(nom => mesAccusations.includes(nom));
 
               const countAccusationsFor = (targetNom) => {
@@ -2242,12 +2207,9 @@ export default function PlayerScreen() {
               return (
                 <div>
                   <p className="text-font text-muted" style={{ marginBottom: '0.85rem', fontSize: '0.88rem', lineHeight: '1.4' }}>
-                    {hasAccusedList
-                      ? "Tribunal du Village : Vous pouvez accuser plusieurs personnes, accuser tout le village (tous les suspects) ou choisir de n'accuser personne."
-                      : "Phase d'Accusations : Vous pouvez accuser plusieurs personnes, accuser tout le village, ou choisir de n'accuser personne."}
+                    Désignez un ou plusieurs suspects à traduire au tribunal, accusez tout le village, ou choisissez de n'accuser personne.
                   </p>
 
-                  {/* Actions rapides globales : Accuser tout le village & N'accuser personne */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', marginBottom: '0.85rem' }}>
                     <button
                       type="button"
@@ -2271,7 +2233,7 @@ export default function PlayerScreen() {
                     >
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
                         <Megaphone size={16} style={{ color: isAllCandidatesSelected ? '#ef4444' : 'var(--primary)' }} />
-                        <span>{isAllCandidatesSelected ? "Tout désélectionner" : (hasAccusedList ? "Accuser tous les suspects" : "Accuser tout le village")}</span>
+                        <span>{isAllCandidatesSelected ? "Tout désélectionner" : "Accuser tout le village"}</span>
                       </span>
                       {isAllCandidatesSelected && (
                         <span style={{ fontSize: '0.75rem', color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
@@ -2302,7 +2264,7 @@ export default function PlayerScreen() {
                     >
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
                         <ShieldCheck size={16} style={{ color: '#10b981' }} />
-                        <span>N'accuser personne ({hasAccusedList ? "Grâce" : "Vote blanc"})</span>
+                        <span>N'accuser personne (Vote blanc)</span>
                       </span>
                       {aChoisiPersonne && (
                         <span style={{ fontSize: '0.75rem', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
@@ -2312,7 +2274,6 @@ export default function PlayerScreen() {
                     </button>
                   </div>
 
-                  {/* Liste des joueurs cibles */}
                   <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
                     {candidates.map(nom => {
                       const isSelected = mesAccusations.includes(nom);
@@ -2356,12 +2317,11 @@ export default function PlayerScreen() {
                     })}
                   </ul>
 
-                  {/* Bandeau récapitulatif */}
                   <div style={{ marginTop: '0.85rem', textAlign: 'center', fontSize: '0.88rem' }}>
                     {aChoisiPersonne ? (
                       <p className="text-font" style={{ color: 'var(--success)', margin: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                         <CheckCircle2 size={16} />
-                        <span>Vous avez choisi de n'accuser personne ({hasAccusedList ? "Gracier les accusés" : "Vote blanc / Grâce"}).</span>
+                        <span>Vous avez choisi de n'accuser personne (Vote blanc).</span>
                       </p>
                     ) : isAllCandidatesSelected ? (
                       <p className="text-font" style={{ color: '#ef4444', margin: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -2379,6 +2339,245 @@ export default function PlayerScreen() {
                       </p>
                     )}
                   </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* ── 2. PHASE DE DÉFENSE DES ACCUSÉS (JOUR_DEFENSE) ───────────────── */}
+        {salonData.statut === 'jour_defense' && (
+          <div style={{ marginTop: '1.5rem', textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '8px' }}>
+              <h3 className="title-font" style={{ color: '#8b5cf6', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.15rem' }}>
+                <Drama size={20} /> Phase de Défense des Accusés
+              </h3>
+              <PhaseTimer
+                phaseStartedAt={salonData.phase_started_at}
+                durationSec={salonData.duree_defense !== undefined ? salonData.duree_defense : 60}
+                label="Temps de défense"
+              />
+            </div>
+
+            {/* Pouvoir Illusionniste si accusé */}
+            {me.role === 'illusionniste' && me.illusion_dispo && salonData?.la_liste_accuses?.includes(me.nom) && (
+              <div style={{ marginBottom: '1rem', padding: '1rem', background: 'rgba(139,92,246,0.15)', border: '1.5px solid #8b5cf6', borderRadius: '12px' }}>
+                <h4 className="title-font" style={{ color: '#c4b5fd', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Sparkles size={16} /> Pouvoir de l'Illusionniste
+                </h4>
+                <p className="text-font" style={{ fontSize: '0.85rem', marginBottom: '0.85rem' }}>
+                  Vous faites partie des accusés ! Activez votre miroir illusoire pour survivre si le village vote contre vous.
+                </p>
+                <button
+                  onClick={async () => {
+                    if (!window.confirm("Activer l'Illusion pour ce vote ?")) return;
+                    try {
+                      await updateDoc(doc(db, 'salons', roomId), { illusion_active: true });
+                      await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { illusion_dispo: false });
+                    } catch (e) { console.error(e); }
+                  }}
+                  className="btn-primary title-font glow-button"
+                  style={{ background: '#8b5cf6' }}
+                >
+                  <Sparkles size={16} /> Activer mon Illusion secrète
+                </button>
+              </div>
+            )}
+
+            {/* Bannière si je suis accusé */}
+            {salonData.la_liste_accuses?.includes(me.nom) ? (
+              <div style={{ padding: '12px 14px', background: 'rgba(239,68,68,0.18)', border: '1.5px solid #ef4444', borderRadius: '10px', marginBottom: '1rem', color: '#fca5a5', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={18} style={{ color: '#ef4444', flexShrink: 0 }} />
+                <span>Vous êtes accusé(e) ! Prenez la parole dans le chat de défense ci-dessous pour prouver votre innocence avant le vote.</span>
+              </div>
+            ) : (
+              <p className="text-font text-muted" style={{ marginBottom: '0.85rem', fontSize: '0.88rem' }}>
+                Les accusés suivants ({salonData.la_liste_accuses?.join(', ')}) présentent leur défense. Lisez leurs arguments avant le vote d'élimination.
+              </p>
+            )}
+
+            {/* Chat de défense des accusés */}
+            <div style={{ marginBottom: '1rem' }}>
+              <AccusedDefenseChat
+                roomId={roomId}
+                salonData={salonData}
+                senderName={me.nom}
+                isDead={false}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ── 3. VOTE D'ÉLIMINATION DU VILLAGE (JOUR_VOTE) ─────────────────── */}
+        {salonData.statut === 'jour_vote' && (
+          <div style={{ marginTop: '1.5rem', textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '8px' }}>
+              <h3 className="title-font" style={{ color: '#ef4444', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.15rem' }}>
+                <Gavel size={20} /> Vote d'Élimination
+              </h3>
+              <PhaseTimer
+                phaseStartedAt={salonData.phase_started_at}
+                durationSec={salonData.duree_vote !== undefined ? salonData.duree_vote : 60}
+                label="Temps de vote"
+              />
+            </div>
+
+            {/* Pouvoir Illusionniste */}
+            {me.role === 'illusionniste' && me.illusion_dispo && salonData?.la_liste_accuses?.includes(me.nom) && (
+              <div style={{ marginBottom: '1rem', padding: '1rem', background: 'rgba(139,92,246,0.15)', border: '1.5px solid #8b5cf6', borderRadius: '12px' }}>
+                <h4 className="title-font" style={{ color: '#c4b5fd', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Sparkles size={16} /> Pouvoir de l'Illusionniste
+                </h4>
+                <p className="text-font" style={{ fontSize: '0.85rem', marginBottom: '0.85rem' }}>
+                  Vous faites partie des accusés. Activez votre illusion pour survivre si le village vous condamne aujourd'hui.
+                </p>
+                <button
+                  onClick={async () => {
+                    if (!window.confirm("Activer l'Illusion pour ce vote ?")) return;
+                    try {
+                      await updateDoc(doc(db, 'salons', roomId), { illusion_active: true });
+                      await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), { illusion_dispo: false });
+                    } catch (e) { console.error(e); }
+                  }}
+                  className="btn-primary title-font glow-button"
+                  style={{ background: '#8b5cf6' }}
+                >
+                  <Sparkles size={16} /> Activer mon Illusion secrète
+                </button>
+              </div>
+            )}
+
+            {me.gracie_idiot ? (
+              <div style={{ padding: '1rem', background: 'rgba(132,204,22,0.12)', border: '1.5px solid #84cc16', borderRadius: '12px', textAlign: 'center' }}>
+                <p className="text-font" style={{ margin: 0, color: '#a3e635', fontWeight: 700, fontSize: '0.9rem' }}>
+                  Vous avez été gracié en tant qu'Idiot du Village : vous êtes en vie mais vous ne pouvez plus voter.
+                </p>
+              </div>
+            ) : (() => {
+              const rawMonVote = salonData?.votes?.[me.nom];
+              const monVoteCible = typeof rawMonVote === 'string' ? rawMonVote : (Array.isArray(rawMonVote) ? rawMonVote[0] : null);
+              const aGracie = monVoteCible === 'Personne';
+
+              // Uniquement les accusés (hors soi-même)
+              const accusedCandidates = (salonData.la_liste_accuses || []).filter(nom => nom !== me.nom);
+
+              const handleVoteTarget = async (nom) => {
+                const nextVote = monVoteCible === nom ? null : nom;
+                try {
+                  if (nextVote === null) {
+                    await updateDoc(doc(db, 'salons', roomId), {
+                      [`votes.${me.nom}`]: deleteField(),
+                    });
+                  } else {
+                    await updateDoc(doc(db, 'salons', roomId), {
+                      [`votes.${me.nom}`]: nextVote,
+                    });
+                  }
+                } catch (e) { console.error(e); }
+              };
+
+              const handleGracier = async () => {
+                const nextVote = aGracie ? null : 'Personne';
+                try {
+                  if (nextVote === null) {
+                    await updateDoc(doc(db, 'salons', roomId), {
+                      [`votes.${me.nom}`]: deleteField(),
+                    });
+                  } else {
+                    await updateDoc(doc(db, 'salons', roomId), {
+                      [`votes.${me.nom}`]: 'Personne',
+                    });
+                  }
+                } catch (e) { console.error(e); }
+              };
+
+              return (
+                <div>
+                  <p className="text-font text-muted" style={{ marginBottom: '0.85rem', fontSize: '0.88rem' }}>
+                    Votez pour l'unique accusé à éliminer au bûcher, ou choisissez de gracier les accusés.
+                  </p>
+
+                  {/* Option Gracier / Vote blanc */}
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <button
+                      type="button"
+                      onClick={handleGracier}
+                      className="text-font"
+                      style={{
+                        width: '100%',
+                        padding: '11px 14px',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                        background: aGracie ? 'rgba(16, 185, 129, 0.22)' : 'var(--input-bg)',
+                        border: aGracie ? '1.5px solid #10b981' : '1px solid var(--card-border)',
+                        color: aGracie ? '#10b981' : 'var(--text-color)',
+                        fontWeight: 700,
+                        fontSize: '0.86rem',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+                        <ShieldCheck size={17} style={{ color: '#10b981' }} />
+                        <span>Gracier les accusés (Ne tuer personne)</span>
+                      </span>
+                      {aGracie && (
+                        <span style={{ fontSize: '0.8rem', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle2 size={15} /> Choisi
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Liste des accusés */}
+                  <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
+                    {accusedCandidates.map(nom => {
+                      const isVoted = monVoteCible === nom;
+                      return (
+                        <li
+                          key={nom}
+                          onClick={() => handleVoteTarget(nom)}
+                          style={{
+                            padding: '11px 14px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            background: isVoted ? '#ef4444' : 'rgba(255,255,255,0.05)',
+                            color: isVoted ? '#fff' : 'var(--text-color)',
+                            border: isVoted ? '1px solid #b91c1c' : '1px solid var(--card-border)',
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          <span style={{ fontWeight: 700 }}>{nom}</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.82rem', fontWeight: 700 }}>
+                            {isVoted ? (
+                              <><CheckCircle2 size={15} /> Vote pour éliminer</>
+                            ) : (
+                              'Voter contre'
+                            )}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+
+                  {monVoteCible && (
+                    <div style={{ marginTop: '0.85rem', textAlign: 'center' }}>
+                      <p className="text-font" style={{ color: aGracie ? 'var(--success)' : '#ef4444', margin: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem' }}>
+                        <CheckCircle2 size={16} />
+                        {aGracie ? (
+                          "Vous avez voté pour gracier les accusés."
+                        ) : (
+                          <>Votre vote pour éliminer <strong>{monVoteCible}</strong> est enregistré.</>
+                        )}
+                      </p>
+                    </div>
+                  )}
                 </div>
               );
             })()}
