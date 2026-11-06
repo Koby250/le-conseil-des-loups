@@ -535,6 +535,24 @@ export default function MjDashboard() {
         });
 
         // ── 5. Mise à jour du salon ───────────────────────────────────────
+        const mortsNuitDetails = [];
+        if (diedFromLoups && salonData.victime_loups) {
+          const p = joueurs.find(j => j.nom === salonData.victime_loups);
+          if (p) mortsNuitDetails.push({ id: p.id, nom: p.nom, role: p.role, raison: 'Dévoré par les Loups-Garous', est_infecte: !!p.est_infecte });
+        }
+        if (diedFromSorciere && salonData.victime_sorciere) {
+          const p = joueurs.find(j => j.nom === salonData.victime_sorciere);
+          if (p) mortsNuitDetails.push({ id: p.id, nom: p.nom, role: p.role, raison: 'Empoisonné par la Sorcière', est_infecte: !!p.est_infecte });
+        }
+        if (salonData.morts_nuit?.venin) {
+          const p = joueurs.find(j => j.nom === salonData.morts_nuit.venin);
+          if (p) mortsNuitDetails.push({ id: p.id, nom: p.nom, role: p.role, raison: "Empoisonné par l'Épée Rouillée", est_infecte: !!p.est_infecte });
+        }
+        if (chagrinNom) {
+          const p = joueurs.find(j => j.nom === chagrinNom);
+          if (p) mortsNuitDetails.push({ id: p.id, nom: p.nom, role: p.role, raison: "Mort de chagrin d'amour", est_infecte: !!p.est_infecte });
+        }
+
         const salonUpdates = {
           statut: 'jour_vote',
           morts_nuit: {
@@ -543,6 +561,7 @@ export default function MjDashboard() {
             venin:    salonData.morts_nuit?.venin || null,
             chagrin:  chagrinNom,
           },
+          morts_nuit_details: mortsNuitDetails,
           infection_active: false,
           notif_mj: notifMj,
           votes: {},
@@ -585,7 +604,13 @@ export default function MjDashboard() {
       alert("Aucun vote n'a été enregistré. Le village a décidé de ne tuer personne.");
       try {
         await updateDoc(doc(db, 'salons', roomId), {
-          statut: 'jour_resolution', condamne_jour: 'Personne (Vote ignoré)',
+          statut: 'jour_resolution',
+          condamne_jour: 'Personne (Vote ignoré)',
+          verdict_details: {
+            type: 'personne',
+            raison: "Aucun vote n'a été enregistré. Le village a décidé de ne tuer personne.",
+            timestamp: Date.now(),
+          },
         });
       } catch (e) { console.error(e); }
       return;
@@ -612,7 +637,13 @@ export default function MjDashboard() {
         alert("Égalité des votes ! Aucun Bouc Émissaire en vie, personne n'est éliminé.");
         try {
           await updateDoc(doc(db, 'salons', roomId), {
-            statut: 'jour_resolution', condamne_jour: 'Personne (Égalité)',
+            statut: 'jour_resolution',
+            condamne_jour: 'Personne (Égalité)',
+            verdict_details: {
+              type: 'personne',
+              raison: "Égalité des votes et aucun Bouc Émissaire en vie : personne n'est éliminé.",
+              timestamp: Date.now(),
+            },
           });
         } catch (e) { console.error(e); }
         return;
@@ -621,7 +652,13 @@ export default function MjDashboard() {
       alert('Aucun condamné. Personne ne meurt.');
       try {
         await updateDoc(doc(db, 'salons', roomId), {
-          statut: 'jour_resolution', condamne_jour: 'Personne',
+          statut: 'jour_resolution',
+          condamne_jour: 'Personne',
+          verdict_details: {
+            type: 'personne',
+            raison: "Aucun habitant n'a été désigné : personne ne meurt.",
+            timestamp: Date.now(),
+          },
         });
       } catch (e) { console.error(e); }
       return;
@@ -638,6 +675,16 @@ export default function MjDashboard() {
           illusion_active: false,
           statut: 'jour_resolution',
           condamne_jour: `${condamneNom} (Sauvé par son Illusion)`,
+          verdict_details: {
+            type: 'illusion_sauve',
+            epargne: {
+              id: condamne.id,
+              nom: condamne.nom,
+              role: condamne.role,
+              raison: "C'était une illusion : le village a exécuté un leurre !",
+            },
+            timestamp: Date.now(),
+          },
         });
       } catch (e) { console.error(e); }
       return;
@@ -653,6 +700,16 @@ export default function MjDashboard() {
         await updateDoc(doc(db, 'salons', roomId), {
           statut: 'jour_resolution',
           condamne_jour: `${condamneNom} (Gracié — Idiot du Village)`,
+          verdict_details: {
+            type: 'idiot_gracie',
+            epargne: {
+              id: condamne.id,
+              nom: condamne.nom,
+              role: condamne.role,
+              raison: "Idiot du Village : gracié par le village, il survit mais perd son droit de vote.",
+            },
+            timestamp: Date.now(),
+          },
           notifications_mj: arrayUnion(`Idiot du Village : ${condamneNom} a été gracié par le village et perd son droit de vote.`),
         });
       } catch (e) { console.error(e); }
@@ -667,6 +724,16 @@ export default function MjDashboard() {
           await updateDoc(doc(db, 'salons', roomId), {
             statut: 'fin_ange',
             condamne_jour: `${condamneNom} (Victoire de l'Ange)`,
+            verdict_details: {
+              type: 'victoire_ange',
+              victimes: [{
+                id: condamne.id,
+                nom: condamne.nom,
+                role: condamne.role,
+                raison: "L'Ange a réussi à se faire condamner au premier tour et remporte la partie !",
+              }],
+              timestamp: Date.now(),
+            },
             notifications_mj: arrayUnion(`L'Ange (${condamneNom}) s'est fait éliminer lors du premier vote et remporte la partie seul !`),
           });
         } catch (e) { console.error(e); }
@@ -683,6 +750,15 @@ export default function MjDashboard() {
         let condamneLabel = condamneNom;
         const deadIds = new Set([condamne.id]);
         const notifs = [];
+        const victimesVerdict = [{
+          id: condamne.id,
+          nom: condamne.nom,
+          role: condamne.role,
+          raison: condamne.role === 'bouc-emissaire'
+            ? 'Sacrifié suite à une égalité des votes (Bouc Émissaire)'
+            : 'Condamné par le vote du bûcher',
+          est_infecte: !!condamne.est_infecte,
+        }];
 
         // Cascade amoureux
         if (Array.isArray(salonData.couple) && salonData.couple.length === 2 && salonData.couple.includes(condamne.id)) {
@@ -693,6 +769,13 @@ export default function MjDashboard() {
             deadIds.add(partner.id);
             condamneLabel = `${condamneNom} + ${partner.nom} (chagrin d'amour)`;
             notifs.push(`Amoureux : ${partner.nom} meurt de chagrin suite à l'exécution de ${condamneNom}.`);
+            victimesVerdict.push({
+              id: partner.id,
+              nom: partner.nom,
+              role: partner.role,
+              raison: "Mort de chagrin d'amour",
+              est_infecte: !!partner.est_infecte,
+            });
           }
         }
 
@@ -719,6 +802,11 @@ export default function MjDashboard() {
         const salonUpd = {
           statut: 'jour_resolution',
           condamne_jour: condamneLabel,
+          verdict_details: {
+            type: 'condamnation',
+            victimes: victimesVerdict,
+            timestamp: Date.now(),
+          },
         };
         if (notifs.length > 0) {
           salonUpd.notifications_mj = arrayUnion(...notifs);
@@ -770,7 +858,16 @@ export default function MjDashboard() {
         illusion_active: false,
         infection_active: false,
         condamne_jour: null,
+        verdict_details: null,
+        victime_chasseur_details: null,
         morts_nuit: veninVictim ? { venin: veninVictim.nom } : null,
+        morts_nuit_details: veninVictim ? [{
+          id: veninVictim.id,
+          nom: veninVictim.nom,
+          role: veninVictim.role,
+          raison: "Empoisonné par le Chevalier à l'Épée Rouillée",
+          est_infecte: !!veninVictim.est_infecte,
+        }] : null,
         la_liste_accuses: [],
         votes: {},
         chat_loups: [],
@@ -1708,7 +1805,13 @@ export default function MjDashboard() {
                         if (!window.confirm("Passer à la nuit sans éliminer personne ?")) return;
                         try {
                           await updateDoc(doc(db, 'salons', roomId), {
-                            statut: 'jour_resolution', condamne_jour: 'Personne (Grâce du village)',
+                            statut: 'jour_resolution',
+                            condamne_jour: 'Personne (Grâce du village)',
+                            verdict_details: {
+                              type: 'personne',
+                              raison: "Le Maître du Jeu a accordé la grâce du village : aucun habitant n'a été éliminé.",
+                              timestamp: Date.now(),
+                            },
                           });
                         } catch (e) { console.error(e); }
                       }}
@@ -1748,26 +1851,49 @@ export default function MjDashboard() {
         )}
 
         {/* JOUR RÉSOLUTION */}
-        {isPhase('jour_resolution') && (
-          <div>
-            <h3 className="title-font" style={{ color: 'var(--success)', marginBottom: '1.25rem', fontSize: '1.35rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <CheckCircle2 size={22} /> Verdict du village : {salonData.condamne_jour}
-            </h3>
-            {chasseurActif ? (
-              <button disabled className="btn-secondary title-font" style={{ width: '100%', padding: '15px' }}>
-                <Hourglass size={18} /> En attente du tir de vengeance du Chasseur ({chasseurActif.nom})...
-              </button>
-            ) : (
-              <button
-                onClick={handleNextNight}
-                className="btn-primary title-font glow-button"
-                style={{ background: '#1d4ed8' }}
-              >
-                <Moon size={20} /> Lancer la Nuit Suivante <ChevronRight size={20} />
-              </button>
-            )}
-          </div>
-        )}
+        {isPhase('jour_resolution') && (() => {
+          const matchedVictims = salonData.verdict_details?.victimes ||
+            joueurs.filter(j => salonData.condamne_jour && salonData.condamne_jour.includes(j.nom));
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <h3 className="title-font" style={{ color: 'var(--success)', marginBottom: '0.5rem', fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Gavel size={22} /> Verdict du village : {salonData.condamne_jour}
+                </h3>
+                {matchedVictims.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                    <span className="text-font text-muted" style={{ fontSize: '0.82rem' }}>Identité(s) révélée(s) :</span>
+                    {matchedVictims.map(v => {
+                      const rObj = v.role ? getRole(v.role) : null;
+                      if (!rObj) return null;
+                      return (
+                        <RoleChip
+                          key={v.id || v.nom}
+                          roleObj={rObj}
+                          onSelectRole={r => setInspectRole(r)}
+                          suffix={v.est_infecte ? '(Infecté)' : undefined}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              {chasseurActif ? (
+                <button disabled className="btn-secondary title-font" style={{ width: '100%', padding: '15px' }}>
+                  <Hourglass size={18} /> En attente du tir de vengeance du Chasseur ({chasseurActif.nom})...
+                </button>
+              ) : (
+                <button
+                  onClick={handleNextNight}
+                  className="btn-primary title-font glow-button"
+                  style={{ background: '#1d4ed8' }}
+                >
+                  <Moon size={20} /> Lancer la Nuit Suivante <ChevronRight size={20} />
+                </button>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── PANNEAU IA : SIMULATEUR & JOUEURS BOTS ────────────────────────── */}

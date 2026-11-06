@@ -23,9 +23,303 @@ import {
   Heart, HeartCrack, PawPrint, ShieldCheck, FlaskConical,
   Crosshair, Skull, Sparkles, Ghost, Trophy, BookOpen,
   CheckCircle2, Ban, Hourglass, Sun, Moon, VenetianMask,
-  Info, Users, Dog, TreePine, Bird, ScanSearch, Drama,
+  Info, Users, Dog, TreePine, Bird, ScanSearch, Drama, Gavel,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
+
+/**
+ * Carte de résolution de la sentence du village (Verdict du vote / Bûcher).
+ * Affiche clairement les victimes avec leur rôle révélé au grand jour,
+ * ou les grâces (Idiot du Village, Illusionniste).
+ */
+function VerdictResolutionCard({ salonData, joueurs, onSelectRole }) {
+  if (salonData?.statut !== 'jour_resolution') return null;
+
+  let type = salonData?.verdict_details?.type;
+  let victimes = salonData?.verdict_details?.victimes || [];
+  let epargne = salonData?.verdict_details?.epargne;
+  let raison = salonData?.verdict_details?.raison;
+
+  // Fallback si verdict_details n'est pas encore présent (rétro-compatibilité)
+  if (!type) {
+    const rawCondamne = salonData?.condamne_jour || '';
+    if (!rawCondamne || rawCondamne.includes('Personne') || rawCondamne.includes('Grâce') || rawCondamne.includes('Égalité')) {
+      type = 'personne';
+      raison = rawCondamne || "Aucun habitant n'a été éliminé par le village.";
+    } else if (rawCondamne.includes('Idiot du Village') || rawCondamne.includes('Gracié')) {
+      type = 'idiot_gracie';
+      const p = joueurs.find(j => rawCondamne.includes(j.nom));
+      epargne = p ? { id: p.id, nom: p.nom, role: p.role, raison: "Gracié par le village : perd son droit de vote" } : null;
+    } else if (rawCondamne.includes('Illusion')) {
+      type = 'illusion_sauve';
+      const p = joueurs.find(j => rawCondamne.includes(j.nom));
+      epargne = p ? { id: p.id, nom: p.nom, role: p.role, raison: "Sauvé par son pouvoir d'Illusion" } : null;
+    } else {
+      type = 'condamnation';
+      const matched = joueurs.filter(j => rawCondamne.includes(j.nom));
+      victimes = matched.map(p => ({
+        id: p.id,
+        nom: p.nom,
+        role: p.role,
+        raison: p.role === 'bouc-emissaire' ? 'Sacrifié (Bouc Émissaire)' : 'Condamné par le vote du village',
+        est_infecte: !!p.est_infecte,
+      }));
+    }
+  }
+
+  // Ajouter la victime du chasseur si elle a tiré
+  if (salonData?.victime_chasseur_details && !victimes.some(v => v.id === salonData.victime_chasseur_details.id)) {
+    victimes = [...victimes, salonData.victime_chasseur_details];
+  }
+
+  // Vérifier si un chasseur mort doit encore tirer
+  const chasseurEnAttente = joueurs.find(j => j.role === 'chasseur' && j.statut_joueur === 'mort' && j.tir_chasseur_fait === false);
+
+  return (
+    <div
+      className="glass-panel"
+      style={{
+        padding: '1.25rem',
+        borderRadius: '1.25rem',
+        border: '2px solid rgba(239, 68, 68, 0.45)',
+        background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(15, 23, 42, 0.85))',
+        marginBottom: '1.25rem',
+        textAlign: 'center',
+        boxShadow: '0 8px 30px rgba(239, 68, 68, 0.18)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#ef4444', marginBottom: '0.35rem' }}>
+        <Gavel size={24} />
+        <h3 className="title-font" style={{ margin: 0, fontSize: '1.25rem', letterSpacing: '0.04em' }}>
+          Sentence du Village
+        </h3>
+      </div>
+      <p className="text-font text-muted" style={{ fontSize: '0.82rem', marginBottom: '1rem' }}>
+        Le bûcher s'embrase. L'identité exacte du condamné est révélée à tous !
+      </p>
+
+      {/* Cas de condamnation avec victimes et rôles révélés */}
+      {victimes.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', textAlign: 'left' }}>
+          {victimes.map(v => {
+            const roleObj = v.role ? getRole(v.role) : null;
+            return (
+              <div
+                key={v.id || v.nom}
+                style={{
+                  background: 'var(--input-bg)',
+                  border: '1.5px solid rgba(239, 68, 68, 0.35)',
+                  borderRadius: '12px',
+                  padding: '0.9rem 1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Skull size={18} style={{ color: '#ef4444' }} />
+                    <strong style={{ fontSize: '1.05rem', color: 'var(--text-color)' }}>{v.nom}</strong>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 600 }}>
+                    {v.raison || 'Condamné par le village'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', paddingTop: '6px', borderTop: '1px solid var(--card-border)' }}>
+                  <span className="text-font" style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+                    Rôle révélé :
+                  </span>
+                  {roleObj ? (
+                    <RoleChip
+                      roleObj={roleObj}
+                      onSelectRole={onSelectRole}
+                      suffix={v.est_infecte ? '(Infecté)' : undefined}
+                      size="md"
+                    />
+                  ) : (
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Rôle inconnu</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Cas où un joueur a été épargné (Idiot du Village ou Illusionniste) */}
+      {epargne && (
+        <div
+          style={{
+            background: 'var(--input-bg)',
+            border: '1.5px solid rgba(245, 158, 11, 0.45)',
+            borderRadius: '12px',
+            padding: '1rem',
+            textAlign: 'left',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fbbf24' }}>
+            <Sparkles size={18} />
+            <strong style={{ fontSize: '1rem' }}>{epargne.nom} est épargné !</strong>
+          </div>
+          <p className="text-font" style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-color)' }}>
+            {epargne.raison}
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid var(--card-border)' }}>
+            <span className="text-font" style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+              Identité dévoilée :
+            </span>
+            {epargne.role && (
+              <RoleChip
+                roleObj={getRole(epargne.role)}
+                onSelectRole={onSelectRole}
+                size="md"
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Cas où personne ne meurt */}
+      {type === 'personne' && (
+        <div style={{ padding: '0.85rem 1rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid #10b981', borderRadius: '10px', color: '#10b981' }}>
+          <p className="title-font" style={{ margin: '0 0 4px', fontSize: '0.95rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+            <ShieldCheck size={16} /> Aucun habitant exécuté
+          </p>
+          <p className="text-font" style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-color)' }}>
+            {raison || 'Le village a choisi de ne condamner personne ce tour-ci.'}
+          </p>
+        </div>
+      )}
+
+      {/* Alerte si le chasseur prépare son tir */}
+      {chasseurEnAttente && (
+        <div style={{ marginTop: '0.75rem', padding: '0.7rem 0.9rem', background: 'rgba(239, 68, 68, 0.15)', border: '1px dashed #ef4444', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.82rem', color: '#fca5a5' }}>
+          <Hourglass size={14} />
+          <span>Le Chasseur ({chasseurEnAttente.nom}) prépare son ultime tir de vengeance...</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Carte de bilan de la nuit (au matin / vote).
+ * Affiche clairement les victimes avec leur rôle révélé au grand jour.
+ */
+function NightResolutionCard({ salonData, joueurs, onSelectRole }) {
+  if (salonData?.statut !== 'jour_vote' && salonData?.statut !== 'matin') return null;
+
+  const nightVictims = [];
+  const seenNames = new Set();
+
+  if (Array.isArray(salonData?.morts_nuit_details) && salonData.morts_nuit_details.length > 0) {
+    salonData.morts_nuit_details.forEach(v => {
+      if (v?.nom && !seenNames.has(v.nom)) {
+        seenNames.add(v.nom);
+        nightVictims.push(v);
+      }
+    });
+  } else if (salonData?.morts_nuit) {
+    const causes = [
+      { key: 'loups', label: 'Dévoré par les Loups-Garous' },
+      { key: 'sorciere', label: 'Empoisonné par la Sorcière' },
+      { key: 'venin', label: 'Empoisonné par le Chevalier' },
+      { key: 'chagrin', label: 'Mort de chagrin d\'amour' },
+    ];
+    causes.forEach(({ key, label }) => {
+      const raw = salonData.morts_nuit[key];
+      if (raw) {
+        const cleanNom = String(raw).replace(/\s*\(chagrin\)/i, '').trim();
+        if (!seenNames.has(cleanNom)) {
+          seenNames.add(cleanNom);
+          const p = joueurs.find(j => j.nom === cleanNom);
+          nightVictims.push({
+            id: p?.id || cleanNom,
+            nom: cleanNom,
+            role: p?.role || null,
+            raison: label,
+            est_infecte: !!p?.est_infecte,
+          });
+        }
+      }
+    });
+  }
+
+  if (nightVictims.length === 0) {
+    return (
+      <div style={{ marginTop: '1.25rem', background: 'rgba(16,185,129,0.14)', border: '1.5px solid #10b981', borderRadius: '12px', padding: '1rem 1.25rem', textAlign: 'center' }}>
+        <h3 className="title-font" style={{ color: '#10b981', fontSize: '1.05rem', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+          <Sparkles size={18} /> Aucune victime cette nuit !
+        </h3>
+        <p className="text-font" style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+          Le village se réveille au grand complet sous la lumière du jour.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: '1.25rem',
+        background: 'linear-gradient(135deg, rgba(239,68,68,0.14), rgba(15,23,42,0.8))',
+        border: '1.5px solid #ef4444',
+        borderRadius: '14px',
+        padding: '1.1rem 1.25rem',
+        textAlign: 'left',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '0.75rem', borderBottom: '1px solid rgba(239,68,68,0.3)', paddingBottom: '0.5rem' }}>
+        <h3 className="title-font" style={{ color: '#ef4444', fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Skull size={19} /> Victimes de la nuit ({nightVictims.length})
+        </h3>
+        <span className="text-font" style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+          Rôles révélés au village
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+        {nightVictims.map(v => {
+          const roleObj = v.role ? getRole(v.role) : null;
+          return (
+            <div
+              key={v.id || v.nom}
+              style={{
+                background: 'var(--input-bg)',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                border: '1px solid var(--card-border)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '8px',
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <strong style={{ fontSize: '0.94rem', color: 'var(--text-color)' }}>{v.nom}</strong>
+                <span style={{ fontSize: '0.74rem', color: '#f87171' }}>{v.raison}</span>
+              </div>
+              {roleObj ? (
+                <RoleChip
+                  roleObj={roleObj}
+                  onSelectRole={onSelectRole}
+                  suffix={v.est_infecte ? '(Infecté)' : undefined}
+                />
+              ) : (
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Rôle inconnu</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function PlayerScreen() {
   const { roomId } = useParams();
@@ -757,9 +1051,20 @@ export default function PlayerScreen() {
                       });
                     }
                     transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), { tir_chasseur_fait: true });
-                    transaction.update(doc(db, 'salons', roomId), {
+                    const chasseurVictim = targetDoc ? {
+                      id: targetDoc.id,
+                      nom: targetDoc.nom,
+                      role: targetDoc.role,
+                      raison: `Abattu dans le dernier souffle du Chasseur (${me.nom})`,
+                      est_infecte: !!targetDoc.est_infecte,
+                    } : null;
+                    const salonUpdatesHunter = {
                       notifications_mj: arrayUnion(...notifs),
-                    });
+                    };
+                    if (chasseurVictim) {
+                      salonUpdatesHunter.victime_chasseur_details = chasseurVictim;
+                    }
+                    transaction.update(doc(db, 'salons', roomId), salonUpdatesHunter);
                   });
                 } catch (e) { console.error(e); }
               }}
@@ -809,6 +1114,10 @@ export default function PlayerScreen() {
               {phaseLabel(salonData.statut)}
             </p>
           </div>
+
+          {/* Annonce Sentence / Bilan nuit pour les spectateurs */}
+          <VerdictResolutionCard salonData={salonData} joueurs={joueurs} onSelectRole={r => setInspectRole(r)} />
+          <NightResolutionCard salonData={salonData} joueurs={joueurs} onSelectRole={r => setInspectRole(r)} />
 
           {/* Infos de la nuit (si phase nuit) */}
           {isNightMode && (
@@ -955,28 +1264,11 @@ export default function PlayerScreen() {
           </button>
         </div>
 
-        {/* Verdict de la nuit (affiché au matin pour tous) */}
-        {salonData?.statut === 'jour_vote' && (() => {
-          const morts = [];
-          if (salonData.morts_nuit?.loups)    morts.push(salonData.morts_nuit.loups);
-          if (salonData.morts_nuit?.sorciere) morts.push(salonData.morts_nuit.sorciere);
-          if (salonData.morts_nuit?.venin)    morts.push(salonData.morts_nuit.venin);
-          if (salonData.morts_nuit?.chagrin)  morts.push(`${salonData.morts_nuit.chagrin} (chagrin)`);
-          const uniqueMorts = [...new Set(morts)];
-          return uniqueMorts.length > 0 ? (
-            <div style={{ marginTop: '1.25rem', background: 'rgba(239,68,68,0.14)', border: '1.5px solid #ef4444', borderRadius: '12px', padding: '1rem 1.25rem', textAlign: 'center' }}>
-              <h3 className="title-font" style={{ color: '#ef4444', fontSize: '1.05rem', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                <Skull size={18} /> Victimes de la nuit : {uniqueMorts.join(', ')}
-              </h3>
-            </div>
-          ) : (
-            <div style={{ marginTop: '1.25rem', background: 'rgba(16,185,129,0.14)', border: '1.5px solid #10b981', borderRadius: '12px', padding: '1rem 1.25rem', textAlign: 'center' }}>
-              <h3 className="title-font" style={{ color: '#10b981', fontSize: '1.05rem', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                <Sparkles size={18} /> Aucune victime cette nuit !
-              </h3>
-            </div>
-          );
-        })()}
+        {/* Annonce officielle du Verdict du Village (Sentence / Bûcher) */}
+        <VerdictResolutionCard salonData={salonData} joueurs={joueurs} onSelectRole={r => setInspectRole(r)} />
+
+        {/* Bilan du réveil et victimes de la nuit */}
+        <NightResolutionCard salonData={salonData} joueurs={joueurs} onSelectRole={r => setInspectRole(r)} />
 
         {/* ── SECRETS DU JOUEUR : affichés uniquement si showRole ──────────────── */}
         {showRole && (
@@ -1910,6 +2202,57 @@ export default function PlayerScreen() {
             ))}
           </ul>
         </div>
+
+        {/* Cimetière du Village : tous les défunts avec leurs rôles dévoilés */}
+        {joueurs.some(j => j.statut_joueur === 'mort') && (
+          <div className="glass-panel" style={{ marginTop: '1.25rem', padding: '1.25rem', borderRadius: '1.25rem', textAlign: 'left', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '0.85rem', borderBottom: '1px solid var(--card-border)', paddingBottom: '0.5rem' }}>
+              <h3 className="title-font" style={{ margin: 0, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '8px', color: '#f87171' }}>
+                <Skull size={18} style={{ color: '#ef4444' }} /> Cimetière ({joueurs.filter(j => j.statut_joueur === 'mort').length})
+              </h3>
+              <span className="text-font" style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                Cliquez sur un rôle pour le détail
+              </span>
+            </div>
+            <ul style={{ listStyle: 'none', padding: 0, maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }} className="text-font">
+              {joueurs.filter(j => j.statut_joueur === 'mort').map(j => {
+                const rObj = j.role ? getRole(j.role) : null;
+                return (
+                  <li
+                    key={j.id}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      background: 'rgba(0, 0, 0, 0.25)',
+                      border: '1px solid var(--card-border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '10px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                      <Skull size={14} style={{ color: 'var(--danger)', flexShrink: 0 }} />
+                      <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.9rem' }}>
+                        {j.nom} {j.id === me.id && '(Vous)'}
+                      </span>
+                    </div>
+                    {rObj ? (
+                      <RoleChip
+                        roleObj={rObj}
+                        onSelectRole={r => setInspectRole(r)}
+                        suffix={j.est_infecte ? '(Infecté)' : undefined}
+                      />
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* ── MODALS ─────────────────────────────────────────────────────────── */}
