@@ -480,7 +480,7 @@ export default function PlayerScreen() {
     return (
       <div className="player-screen">
         <ThemeToggle />
-        <div className="ambient-bg" style={{ backgroundColor: myRoleData?.color || '#7e22ce' }} />
+        <div className="ambient-bg" style={{ backgroundColor: showRole ? (myRoleData?.color || 'transparent') : 'transparent' }} />
         <div className="player-content">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
             <span className="room-badge" style={{ marginBottom: 0 }}>SALON {roomId}</span>
@@ -552,18 +552,24 @@ export default function PlayerScreen() {
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem' }}>
-            {myRoleData && (
+          {showRole && myRoleData && (
+            <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem' }}>
               <button
                 type="button"
                 onClick={() => setInspectRole(myRoleData)}
                 className="btn-secondary text-font"
-                style={{ flex: 1, fontSize: '0.82rem' }}
+                style={{
+                  flex: 1,
+                  fontSize: '0.82rem',
+                  color: 'var(--text-color)',
+                  borderColor: 'var(--card-border)',
+                  background: 'var(--card-bg)',
+                }}
               >
-                <Info size={15} style={{ color: myRoleData.color }} /> Fiche détaillée de mon rôle
+                <Info size={15} style={{ color: 'var(--text-muted)' }} /> Fiche détaillée de mon rôle
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <RoleDetailsModal role={inspectRole} onClose={() => setInspectRole(null)} showMjScript={true} />

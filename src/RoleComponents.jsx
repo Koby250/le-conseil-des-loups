@@ -319,11 +319,12 @@ export function RoleCardView({ role, onOpenDetails, compact = false }) {
               }}
               className="ornate-detail-btn"
               style={{
-                borderColor: `${role.color}66`,
-                background: `${role.color}20`,
+                borderColor: 'var(--card-border, rgba(255, 255, 255, 0.18))',
+                background: 'rgba(255, 255, 255, 0.06)',
+                color: 'var(--text-color, #f8fafc)',
               }}
             >
-              <Info size={14} style={{ color: role.color }} />
+              <Info size={14} style={{ color: 'var(--text-muted, #94a3b8)' }} />
               <span>Fiche détaillée du rôle</span>
             </button>
           </div>
