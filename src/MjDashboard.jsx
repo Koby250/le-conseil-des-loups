@@ -28,7 +28,7 @@ import {
   Shield, ShieldCheck, PawPrint, Skull, Sun, Moon,
   Heart, VenetianMask, FlaskConical, Gavel, Trophy,
   CheckCircle2, AlertTriangle, Hourglass, Megaphone,
-  Lock, Unlock, Sparkles, Sword, Bird, X, Bot, User,
+  Lock, Unlock, Sparkles, Sword, Bird, X, Bot, User, MoveHorizontal,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
@@ -1855,8 +1855,13 @@ export default function MjDashboard() {
             )}
           </div>
 
-          <div style={{ marginTop: '1rem', overflowX: 'auto', maxHeight: '520px', overflowY: 'auto' }}>
-            <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }} className="text-font">
+          <div className="table-responsive-hint text-font">
+            <MoveHorizontal size={13} />
+            <span>Glissez horizontalement pour voir toutes les colonnes</span>
+          </div>
+
+          <div className="table-responsive-wrapper" style={{ maxHeight: '520px' }}>
+            <table style={{ minWidth: '680px', width: '100%', textAlign: 'left', borderCollapse: 'collapse' }} className="text-font">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--card-border)' }}>
                   <th style={{ padding: '10px 8px', color: 'var(--text-muted)', fontSize: '0.82rem', textTransform: 'uppercase' }}>Joueur</th>

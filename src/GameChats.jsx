@@ -5,7 +5,7 @@ import { getRole } from './rolesData';
 import { RoleCardView, RoleIcon } from './RoleComponents';
 import {
   MessageSquare, Send, Bell, PawPrint, Gavel, Megaphone,
-  User, Users, CheckCircle2, X, Sparkles, RefreshCw,
+  User, Users, CheckCircle2, X, Sparkles, RefreshCw, Trash2,
 } from 'lucide-react';
 
 // ─── 1. Chat nocturne de la Meute des Loups ──────────────────────────────────
@@ -329,12 +329,13 @@ export function MjMessengerPanel({ roomId, salonData, joueurs }) {
     }
   }, [messages.length]);
 
+  const targetPlayer = cible === 'TOUS' ? null : joueurs.find((j) => j.id === cible);
+
   const handleSend = async (e) => {
     e.preventDefault();
     if (!text.trim() || sending) return;
     setSending(true);
 
-    const targetPlayer = cible === 'TOUS' ? null : joueurs.find((j) => j.id === cible);
     const msgObj = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       cible: cible,
@@ -356,77 +357,118 @@ export function MjMessengerPanel({ roomId, salonData, joueurs }) {
     }
   };
 
+  const handleClearHistory = async () => {
+    if (!window.confirm("Effacer tout l'historique des messages du Maître du Jeu ?")) return;
+    try {
+      await updateDoc(doc(db, 'salons', roomId), { messages_mj: [] });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
     <div
       className="glass-panel"
       style={{
-        padding: '1.35rem',
+        padding: '1.25rem',
         borderRadius: '1.25rem',
         border: '1.5px solid var(--border-accent)',
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.85rem',
+        gap: '0.75rem',
+        width: '100%',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
     >
+      {/* En-tête avec bouton vider */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-        <h3 className="title-font" style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <MessageSquare size={20} style={{ color: 'var(--primary)' }} />
+        <h3 className="title-font" style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <MessageSquare size={19} style={{ color: 'var(--primary)' }} />
           <span>Messagerie du Maître du Jeu</span>
         </h3>
-        <span className="text-font" style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-          Envoie une notification instantanée sur le téléphone ciblé
-        </span>
+        {messages.length > 0 && (
+          <button
+            type="button"
+            onClick={handleClearHistory}
+            className="text-font"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted)',
+              fontSize: '0.74rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <Trash2 size={12} /> Vider l'historique
+          </button>
+        )}
       </div>
 
-      {/* Sélection de la cible */}
+      {/* Sélection du destinataire : Bouton "Tous les joueurs" + Liste déroulante compacte */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
         <button
           type="button"
           onClick={() => setCible('TOUS')}
           className="text-font"
           style={{
-            padding: '6px 12px',
-            borderRadius: '2rem',
-            fontSize: '0.8rem',
-            fontWeight: 700,
+            padding: '8px 14px',
+            borderRadius: '8px',
+            fontSize: '0.84rem',
+            fontWeight: 800,
             cursor: 'pointer',
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '5px',
+            gap: '6px',
             background: cible === 'TOUS' ? 'var(--primary)' : 'var(--input-bg)',
             color: cible === 'TOUS' ? '#fff' : 'var(--text-color)',
-            border: cible === 'TOUS' ? '1px solid var(--primary)' : '1px solid var(--card-border)',
+            border: cible === 'TOUS' ? '1.5px solid var(--primary)' : '1px solid var(--card-border)',
+            transition: 'all 0.2s ease',
+            whiteSpace: 'nowrap',
           }}
         >
-          <Users size={14} /> Tous les joueurs
+          <Users size={15} /> Tous les joueurs
         </button>
 
-        {joueurs.map((j) => {
-          const isSelected = cible === j.id;
-          return (
-            <button
-              key={j.id}
-              type="button"
-              onClick={() => setCible(j.id)}
-              className="text-font"
-              style={{
-                padding: '6px 11px',
-                borderRadius: '2rem',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                background: isSelected ? '#ec4899' : 'var(--input-bg)',
-                color: isSelected ? '#fff' : 'var(--text-color)',
-                border: isSelected ? '1px solid #ec4899' : '1px solid var(--card-border)',
-              }}
-            >
-              <User size={13} /> {j.nom}
-            </button>
-          );
-        })}
+        <select
+          value={cible === 'TOUS' ? '' : cible}
+          onChange={(e) => setCible(e.target.value || 'TOUS')}
+          className="text-font"
+          style={{
+            flex: '1 1 200px',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            border: cible !== 'TOUS' ? '1.5px solid #ec4899' : '1px solid var(--card-border)',
+            background: 'var(--input-bg)',
+            color: 'var(--text-color)',
+            fontSize: '0.86rem',
+            fontWeight: cible !== 'TOUS' ? 700 : 500,
+            outline: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          <option value="">Sélectionner un joueur en particulier...</option>
+          {joueurs.map((j) => (
+            <option key={j.id} value={j.id}>
+              {j.nom} {j.statut_joueur === 'mort' ? '(Mort)' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Indicateur de destinataire */}
+      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+        <span>Destinataire :</span>
+        <strong style={{ color: cible === 'TOUS' ? 'var(--primary)' : '#ec4899', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          {cible === 'TOUS' ? (
+            <><Users size={12} /> Tous les joueurs (Annonce publique)</>
+          ) : (
+            <><User size={12} /> Message privé pour {targetPlayer?.nom || 'Joueur'}</>
+          )}
+        </strong>
       </div>
 
       {/* Historique des messages envoyés */}
@@ -434,13 +476,13 @@ export function MjMessengerPanel({ roomId, salonData, joueurs }) {
         <div
           ref={listRef}
           style={{
-            maxHeight: '165px',
+            maxHeight: '135px',
             overflowY: 'auto',
             display: 'flex',
             flexDirection: 'column',
             gap: '6px',
-            padding: '0.6rem',
-            borderRadius: '10px',
+            padding: '0.5rem',
+            borderRadius: '8px',
             background: 'rgba(0, 0, 0, 0.2)',
             border: '1px solid var(--card-border)',
           }}
@@ -449,56 +491,66 @@ export function MjMessengerPanel({ roomId, salonData, joueurs }) {
             <div
               key={m.id}
               style={{
-                padding: '6px 10px',
-                borderRadius: '8px',
+                padding: '6px 9px',
+                borderRadius: '6px',
                 background: 'var(--input-bg)',
                 borderLeft: `3px solid ${m.cible === 'TOUS' ? 'var(--primary)' : '#ec4899'}`,
-                fontSize: '0.82rem',
+                fontSize: '0.8rem',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '2px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: '2px' }}>
                 <strong style={{ color: m.cible === 'TOUS' ? 'var(--primary)' : '#ec4899' }}>
                   À : {m.cible_nom}
                 </strong>
                 <span>{m.heure}</span>
               </div>
-              <div className="text-font" style={{ color: 'var(--text-color)' }}>{m.texte}</div>
+              <div className="text-font" style={{ color: 'var(--text-color)', wordBreak: 'break-word' }}>
+                {m.texte}
+              </div>
             </div>
           ))}
         </div>
       )}
 
       {/* Formulaire d'envoi */}
-      <form onSubmit={handleSend} style={{ display: 'flex', gap: '8px' }}>
+      <form onSubmit={handleSend} style={{ display: 'flex', gap: '6px', width: '100%' }}>
         <input
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={
             cible === 'TOUS'
-              ? 'Écrire une annonce à tous les joueurs...'
-              : `Écrire un message privé à ${joueurs.find((j) => j.id === cible)?.nom || 'ce joueur'}...`
+              ? "Message d'annonce à tous les joueurs..."
+              : `Message privé pour ${targetPlayer?.nom || 'le joueur'}...`
           }
-          maxLength={300}
+          maxLength={280}
           className="text-font"
           style={{
             flex: 1,
-            padding: '10px 13px',
-            borderRadius: '10px',
+            padding: '9px 12px',
+            borderRadius: '8px',
             border: '1px solid var(--card-border)',
             background: 'var(--input-bg)',
             color: 'var(--text-color)',
-            fontSize: '0.88rem',
+            fontSize: '0.86rem',
             outline: 'none',
+            minWidth: 0,
           }}
         />
         <button
           type="submit"
           disabled={!text.trim() || sending}
-          className="btn-primary title-font"
-          style={{ width: 'auto', padding: '10px 18px', fontSize: '0.85rem' }}
+          className="btn-primary"
+          style={{
+            width: 'auto',
+            padding: '9px 15px',
+            fontSize: '0.84rem',
+            background: cible === 'TOUS' ? 'var(--primary)' : '#ec4899',
+            flexShrink: 0,
+          }}
         >
-          <Send size={16} /> Envoyer
+          <Send size={15} />
+          <span>Envoyer</span>
         </button>
       </form>
     </div>
