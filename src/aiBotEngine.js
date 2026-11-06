@@ -390,6 +390,7 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
   if (statut === 'nuit_loups') {
     const wolfBots = aliveBots.filter(j => isWolf(j));
     const nonWolfTargets = alivePlayers.filter(j => !isWolf(j));
+    const humanWolves = alivePlayers.filter(j => isWolf(j) && !isBot(j));
 
     if (wolfBots.length > 0 && nonWolfTargets.length > 0) {
       // Choix ou confirmation de la proie
@@ -443,17 +444,22 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
         });
         return `L'Infect Père des Loups IA a ${doInfect ? 'infecté' : 'décidé de dévorer'} ${targetName}.`;
       } else if (!salonData.victime_loups) {
-        // Confirmation normale de la proie
+        // S'il n'y a aucun loup humain dans la meute, les bots confirment directement la proie
+        // S'il y a un loup humain, les bots marquent a_vote = true pour valider la proposition tout en laissant l'humain confirmer
         const batch = writeBatch(db);
-        batch.update(doc(db, 'salons', roomId), {
-          victime_loups: targetName,
-          notifications_mj: arrayUnion(`La meute IA a validé sa proie : ${targetName}.`),
-        });
+        if (humanWolves.length === 0) {
+          batch.update(doc(db, 'salons', roomId), {
+            victime_loups: targetName,
+            notifications_mj: arrayUnion(`La meute IA a validé sa proie : ${targetName}.`),
+          });
+        }
         wolfBots.forEach(w => {
           batch.update(doc(db, 'salons', roomId, 'joueurs', w.id), { a_vote: true });
         });
         await batch.commit();
-        return `La meute IA a confirmé sa proie : ${targetName}.`;
+        return humanWolves.length === 0
+          ? `La meute IA a confirmé sa proie : ${targetName}.`
+          : `Les loups IA soutiennent la cible ${targetName} avec leurs alliés humains.`;
       }
     }
   }

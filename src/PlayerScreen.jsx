@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  collection, doc, setDoc, updateDoc, onSnapshot,
+  collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot,
   runTransaction, writeBatch, arrayRemove, arrayUnion,
 } from 'firebase/firestore';
 
@@ -146,8 +146,20 @@ export default function PlayerScreen() {
   const handleJoin = async e => {
     e.preventDefault();
     if (!playerName.trim()) return;
-    if (salonData && joueurs.length >= salonData.roles_selectionnes.length)
-      return setError('Salon complet.');
+
+    // Gestion de la capacité du salon : un vrai joueur peut remplacer un bot IA
+    if (salonData && Array.isArray(salonData.roles_selectionnes) && joueurs.length >= salonData.roles_selectionnes.length) {
+      const botToReplace = joueurs.find(j => j.est_bot === true || String(j.nom || '').endsWith('(IA)'));
+      if (botToReplace) {
+        try {
+          await deleteDoc(doc(db, 'salons', roomId, 'joueurs', botToReplace.id));
+        } catch (delErr) {
+          console.error('Erreur remplacement bot:', delErr);
+        }
+      } else {
+        return setError('Salon complet (toutes les places sont occupées par de vrais joueurs).');
+      }
+    }
 
     const stableId = 'joueur_' + roomId + '_' + playerName.trim().toLowerCase().replace(/\s+/g, '_');
     if (joueurs.find(j => j.nom.toLowerCase() === playerName.trim().toLowerCase() && j.id !== stableId))
@@ -160,6 +172,7 @@ export default function PlayerScreen() {
         role: '',
         statut_joueur: 'en_vie',
         est_mj: false,
+        est_bot: false,
         pouvoir_utilise: false,
         a_vote: false,
         a_vote_sorciere: false,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Bot, Cpu, Play, Pause, UserPlus, Trash2, Zap,
-  Sparkles, CheckCircle2, AlertTriangle, RefreshCw, Dices,
+  Sparkles, CheckCircle2, AlertTriangle, RefreshCw, Dices, User,
 } from 'lucide-react';
 import {
   isBot, addSingleBot, fillSalonWithBots,
@@ -18,6 +18,8 @@ export default function AiTestPanel({ roomId, salonData, joueurs = [] }) {
 
   const bots = joueurs.filter(j => isBot(j));
   const aliveBots = bots.filter(j => j.statut_joueur !== 'mort');
+  const humanPlayers = joueurs.filter(j => !isBot(j));
+  const aliveHumans = humanPlayers.filter(j => j.statut_joueur !== 'mort');
   const targetCount = Array.isArray(salonData?.roles_selectionnes)
     ? salonData.roles_selectionnes.length
     : (salonData?.roles_melanges?.length || 6);
@@ -140,12 +142,31 @@ export default function AiTestPanel({ roomId, salonData, joueurs = [] }) {
               Simulateur & Joueurs IA
             </h3>
             <p className="text-font" style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              Testez une partie complète sans vrais joueurs grâce aux Bots autonomes
+              Mélangez de vrais joueurs et des bots IA, ou lancez une simulation à 100% de bots
             </p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span
+            className="text-font"
+            style={{
+              padding: '4px 10px',
+              borderRadius: '20px',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              background: humanPlayers.length > 0 ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.06)',
+              color: humanPlayers.length > 0 ? '#10b981' : 'var(--text-muted)',
+              border: '1px solid rgba(16,185,129,0.35)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+            }}
+          >
+            <User size={13} />
+            {humanPlayers.length} Humain{humanPlayers.length > 1 ? 's' : ''} ({aliveHumans.length} en vie)
+          </span>
+
           <span
             className="text-font"
             style={{

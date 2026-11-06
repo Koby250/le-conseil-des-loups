@@ -28,7 +28,7 @@ import {
   Shield, ShieldCheck, PawPrint, Skull, Sun, Moon,
   Heart, VenetianMask, FlaskConical, Gavel, Trophy,
   CheckCircle2, AlertTriangle, Hourglass, Megaphone,
-  Lock, Unlock, Sparkles, Sword, Bird, X, Bot,
+  Lock, Unlock, Sparkles, Sword, Bird, X, Bot, User,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
@@ -1776,14 +1776,19 @@ export default function MjDashboard() {
       {/* ── GRILLE BASSE : QR Code / Guide + Tableau des joueurs ─────────── */}
       <div className="mj-main-grid" style={{ marginTop: '1.75rem' }}>
         {/* QR Code (avant lancement) */}
-        {!isGameRunning && joueurs.length < salonData.roles_selectionnes.length && (
+        {!isGameRunning && (
           <div className="qr-panel glass-panel" style={{ padding: '1.5rem', borderRadius: '1.25rem', textAlign: 'center' }}>
             <h2 className="title-font" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--text-color)', fontSize: '1.25rem', marginBottom: '0.5rem' }}>
               <LinkIcon size={20} style={{ color: 'var(--primary)' }} /> Rejoindre la partie
             </h2>
-            <p className="text-font text-muted" style={{ fontSize: '0.9rem' }}>
-              Scannez ce QR Code avec les smartphones ({joueurs.length}/{salonData.roles_selectionnes.length} inscrits).
+            <p className="text-font text-muted" style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>
+              Scannez ce QR Code avec les smartphones ({joueurs.filter(j => !isBot(j)).length} vrai(s) joueur(s) / {salonData.roles_selectionnes.length} places).
             </p>
+            {joueurs.some(j => isBot(j)) && (
+              <p className="text-font" style={{ fontSize: '0.8rem', color: '#06b6d4', margin: '4px 0 8px' }}>
+                Des Bots IA complètent le salon : les vrais joueurs qui scannent remplaceront automatiquement un bot.
+              </p>
+            )}
             <div className="qr-wrapper">
               <QRCodeSVG value={getPlayerUrl()} size={190} bgColor="#ffffff" fgColor="#000000" level="H" includeMargin={false} />
             </div>
@@ -1881,9 +1886,13 @@ export default function MjDashboard() {
                       <td style={{ padding: '10px 8px', fontWeight: 'bold', color: 'var(--text-color)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span>{j.nom}</span>
-                          {isBot(j) && (
+                          {isBot(j) ? (
                             <span style={{ fontSize: '0.72rem', background: 'rgba(6,182,212,0.18)', color: '#06b6d4', border: '1px solid rgba(6,182,212,0.3)', padding: '2px 6px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: 'bold' }}>
                               <Bot size={11} /> IA
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.72rem', background: 'rgba(16,185,129,0.18)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)', padding: '2px 6px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: 'bold' }}>
+                              <User size={11} /> Humain
                             </span>
                           )}
                         </div>
