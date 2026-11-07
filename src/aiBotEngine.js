@@ -220,8 +220,26 @@ const ACCUSED_CITIZEN_REACTIONS = [
 ];
 
 /**
+ * Calcule un délai de réaction humanisé et stable (en secondes) pour un bot donné,
+ * une phase donnée et un numéro de jour donné.
+ */
+export function getBotActionDelay(botNom, phaseKey, dayNumber = 1, minSec = 4, maxSec = 14) {
+  let hash = 0;
+  const str = `${botNom || ''}_${phaseKey}_${dayNumber}`;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  const positive = Math.abs(hash);
+  const span = Math.max(1, maxSec - minSec);
+  const rawDelay = minSec + (positive % span) + ((positive % 10) / 10);
+  return Math.round(rawDelay * 10) / 10;
+}
+
+/**
  * MOTEUR D'ACTION AUTONOME DES BOTS IA
  * Analyse l'état actuel de la partie et fait jouer les bots qui ont un tour à jouer.
+ * Imite le rythme d'action humain avec hésitations et actions échelonnées dans le temps.
  * Retourne un descriptif des actions menées pour affichage au MJ.
  */
 export async function runBotTurnStep(roomId, salonData, joueurs = []) {
@@ -232,6 +250,10 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
   const alivePlayers = joueurs.filter(j => j.statut_joueur !== 'mort');
   const aliveBots = bots.filter(j => j.statut_joueur !== 'mort');
   const actionsSummary = [];
+
+  const phaseStartedAt = salonData.phase_started_at || salonData.auto_mj_phase_started_at || 0;
+  const elapsedSec = phaseStartedAt > 0 ? (Date.now() - phaseStartedAt) / 1000 : 999;
+  const dayNumber = salonData.numero_jour || 1;
 
   // ── 0. Proposition de rôle du MJ en attente chez un Bot IA ──────────────────
   const botWithProposal = bots.find(j => j.proposition_role?.roleId);
@@ -309,53 +331,29 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
     return null;
   }
 
-  // B. Nuit : Cupidon
+  // B. Nuit : Cupidon (hésitation humaine de 5 à 10s)
   if (statut === 'nuit_cupidon') {
     const cupidonBot = aliveBots.find(j => j.role === 'cupidon' && !j.pouvoir_utilise);
     if (cupidonBot && alivePlayers.length >= 2) {
-      const shuffled = shuffleArray([...alivePlayers]);
-      const p1 = shuffled[0];
-      const p2 = shuffled[1];
-      try {
-        await runTransaction(db, async transaction => {
-          transaction.update(doc(db, 'salons', roomId), {
-            couple: [p1.id, p2.id],
-            notifications_mj: arrayUnion(`Cupidon IA (${cupidonBot.nom}) a uni ${p1.nom} et ${p2.nom}.`),
-          });
-          transaction.update(doc(db, 'salons', roomId, 'joueurs', cupidonBot.id), {
-            pouvoir_utilise: true,
-            a_vote: true,
-          });
-          transaction.update(doc(db, 'salons', roomId, 'joueurs', p1.id), { statut_joueur: 'En couple' });
-          transaction.update(doc(db, 'salons', roomId, 'joueurs', p2.id), { statut_joueur: 'En couple' });
-        });
-        return `Cupidon IA (${cupidonBot.nom}) a uni ${p1.nom} et ${p2.nom}.`;
-      } catch (e) {
-        console.error(e);
-      }
-    }
-  }
-
-  // C. Nuit : Salvateur
-  if (statut === 'nuit_salvateur') {
-    const salvateurBot = aliveBots.find(j => j.role === 'salvateur' && !j.a_vote);
-    if (salvateurBot) {
-      const candidates = alivePlayers.filter(j => j.nom !== salonData.derniere_cible_salvateur);
-      if (candidates.length > 0) {
-        const target = candidates[Math.floor(Math.random() * candidates.length)];
+      const plannedDelay = getBotActionDelay(cupidonBot.nom, 'cupidon', dayNumber, 5, 10);
+      if (elapsedSec >= plannedDelay) {
+        const shuffled = shuffleArray([...alivePlayers]);
+        const p1 = shuffled[0];
+        const p2 = shuffled[1];
         try {
           await runTransaction(db, async transaction => {
             transaction.update(doc(db, 'salons', roomId), {
-              joueur_protege: target.nom,
-              derniere_cible_salvateur: target.nom,
-              notifications_mj: arrayUnion(`Le Salvateur IA (${salvateurBot.nom}) a protégé ${target.nom}.`),
+              couple: [p1.id, p2.id],
+              notifications_mj: arrayUnion(`Cupidon IA (${cupidonBot.nom}) a uni ${p1.nom} et ${p2.nom}.`),
             });
-            transaction.update(doc(db, 'salons', roomId, 'joueurs', salvateurBot.id), {
+            transaction.update(doc(db, 'salons', roomId, 'joueurs', cupidonBot.id), {
+              pouvoir_utilise: true,
               a_vote: true,
-              dernier_protege: target.nom,
             });
+            transaction.update(doc(db, 'salons', roomId, 'joueurs', p1.id), { statut_joueur: 'En couple' });
+            transaction.update(doc(db, 'salons', roomId, 'joueurs', p2.id), { statut_joueur: 'En couple' });
           });
-          return `Le Salvateur IA (${salvateurBot.nom}) a protégé ${target.nom}.`;
+          return `Cupidon IA (${cupidonBot.nom}) a uni ${p1.nom} et ${p2.nom}.`;
         } catch (e) {
           console.error(e);
         }
@@ -363,257 +361,394 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
     }
   }
 
-  // D. Nuit : Voyante
+  // C. Nuit : Salvateur (hésitation humaine de 5 à 10s)
+  if (statut === 'nuit_salvateur') {
+    const salvateurBot = aliveBots.find(j => j.role === 'salvateur' && !j.a_vote);
+    if (salvateurBot) {
+      const plannedDelay = getBotActionDelay(salvateurBot.nom, 'salvateur', dayNumber, 5, 10);
+      if (elapsedSec >= plannedDelay) {
+        const candidates = alivePlayers.filter(j => j.nom !== salonData.derniere_cible_salvateur);
+        if (candidates.length > 0) {
+          const target = candidates[Math.floor(Math.random() * candidates.length)];
+          try {
+            await runTransaction(db, async transaction => {
+              transaction.update(doc(db, 'salons', roomId), {
+                joueur_protege: target.nom,
+                derniere_cible_salvateur: target.nom,
+                notifications_mj: arrayUnion(`Le Salvateur IA (${salvateurBot.nom}) a protégé ${target.nom}.`),
+              });
+              transaction.update(doc(db, 'salons', roomId, 'joueurs', salvateurBot.id), {
+                a_vote: true,
+                dernier_protege: target.nom,
+              });
+            });
+            return `Le Salvateur IA (${salvateurBot.nom}) a protégé ${target.nom}.`;
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
+    }
+  }
+
+  // D. Nuit : Voyante (observation humaine de 5 à 11s)
   if (statut === 'nuit_voyante') {
     const voyanteBot = aliveBots.find(j => j.role === 'voyante' && !j.a_vote);
     if (voyanteBot) {
-      const candidates = alivePlayers.filter(j => j.id !== voyanteBot.id);
-      if (candidates.length > 0) {
-        const target = candidates[Math.floor(Math.random() * candidates.length)];
-        const rData = getRole(target.role);
-        try {
-          await updateDoc(doc(db, 'salons', roomId, 'joueurs', voyanteBot.id), { a_vote: true });
-          await updateDoc(doc(db, 'salons', roomId), {
-            notifications_mj: arrayUnion(
-              `La Voyante IA (${voyanteBot.nom}) a sondé ${target.nom} (${rData?.name || target.role}).`
-            ),
-          });
-          return `La Voyante IA (${voyanteBot.nom}) a sondé ${target.nom}.`;
-        } catch (e) {
-          console.error(e);
+      const plannedDelay = getBotActionDelay(voyanteBot.nom, 'voyante', dayNumber, 5, 11);
+      if (elapsedSec >= plannedDelay) {
+        const candidates = alivePlayers.filter(j => j.id !== voyanteBot.id);
+        if (candidates.length > 0) {
+          const target = candidates[Math.floor(Math.random() * candidates.length)];
+          const rData = getRole(target.role);
+          try {
+            await updateDoc(doc(db, 'salons', roomId, 'joueurs', voyanteBot.id), { a_vote: true });
+            await updateDoc(doc(db, 'salons', roomId), {
+              notifications_mj: arrayUnion(
+                `La Voyante IA (${voyanteBot.nom}) a sondé ${target.nom} (${rData?.name || target.role}).`
+              ),
+            });
+            return `La Voyante IA (${voyanteBot.nom}) a sondé ${target.nom}.`;
+          } catch (e) {
+            console.error(e);
+          }
         }
       }
     }
   }
 
-  // E. Nuit : Loups-Garous
+  // E. Nuit : Loups-Garous (débat progressif dans le chat puis confirmation de la meute)
   if (statut === 'nuit_loups') {
     const wolfBots = aliveBots.filter(j => isWolf(j));
     const nonWolfTargets = alivePlayers.filter(j => !isWolf(j));
     const humanWolves = alivePlayers.filter(j => isWolf(j) && !isBot(j));
 
     if (wolfBots.length > 0 && nonWolfTargets.length > 0) {
-      // Choix ou confirmation de la proie
       let targetName = salonData.vote_loup_temporaire;
+
+      // Étape 1 : un premier loup propose une proie dans le chat (4 à 8s)
+      const delaySuggest = getBotActionDelay(wolfBots[0].nom, 'wolf_suggest', dayNumber, 4, 8);
       if (!targetName || !nonWolfTargets.some(t => t.nom === targetName)) {
-        const chosen = nonWolfTargets[Math.floor(Math.random() * nonWolfTargets.length)];
-        targetName = chosen.nom;
+        if (elapsedSec >= delaySuggest) {
+          const chosen = nonWolfTargets[Math.floor(Math.random() * nonWolfTargets.length)];
+          targetName = chosen.nom;
 
-        // Message dans le chat des loups
-        const speaker = wolfBots[Math.floor(Math.random() * wolfBots.length)];
-        const template = WOLF_CHAT_MESSAGES[Math.floor(Math.random() * WOLF_CHAT_MESSAGES.length)];
-        const text = template.replace('{target}', targetName);
+          const speaker = wolfBots[Math.floor(Math.random() * wolfBots.length)];
+          const template = WOLF_CHAT_MESSAGES[Math.floor(Math.random() * WOLF_CHAT_MESSAGES.length)];
+          const text = template.replace('{target}', targetName);
 
-        const newMsg = {
-          id: 'bot_msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-          sender: speaker.nom,
-          text,
-          timestamp: Date.now(),
-          isWolf: true,
-        };
+          const newMsg = {
+            id: 'bot_msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            sender: speaker.nom,
+            text,
+            timestamp: Date.now(),
+            isWolf: true,
+          };
 
-        await updateDoc(doc(db, 'salons', roomId), {
-          vote_loup_temporaire: targetName,
-          chat_loups: arrayUnion(newMsg),
-        });
-        actionsSummary.push(`Les Loups IA visent ${targetName}.`);
-      }
-
-      // Si Infect Père des Loups bot
-      const infectPereBot = wolfBots.find(
-        j => (j.role === 'infect-pere-des-loups' || j.role === 'pere-des-loups') && j.infection_dispo && !j.infection_repondu
-      );
-
-      if (infectPereBot) {
-        const doInfect = Math.random() < 0.5;
-        await runTransaction(db, async transaction => {
-          transaction.update(doc(db, 'salons', roomId), {
-            victime_loups: targetName,
-            infection_active: doInfect,
-            notifications_mj: arrayUnion(
-              doInfect
-                ? `L'Infect Père des Loups IA (${infectPereBot.nom}) a choisi d'infecter ${targetName}.`
-                : `L'Infect Père des Loups IA (${infectPereBot.nom}) laisse la cible mourir.`
-            ),
+          await updateDoc(doc(db, 'salons', roomId), {
+            vote_loup_temporaire: targetName,
+            chat_loups: arrayUnion(newMsg),
           });
-          transaction.update(doc(db, 'salons', roomId, 'joueurs', infectPereBot.id), {
-            a_vote: true,
-            infection_dispo: !doInfect,
-            infection_repondu: true,
-          });
-        });
-        return `L'Infect Père des Loups IA a ${doInfect ? 'infecté' : 'décidé de dévorer'} ${targetName}.`;
-      } else if (!salonData.victime_loups) {
-        // S'il n'y a aucun loup humain dans la meute, les bots confirment directement la proie
-        // S'il y a un loup humain, les bots marquent a_vote = true pour valider la proposition tout en laissant l'humain confirmer
-        const batch = writeBatch(db);
-        if (humanWolves.length === 0) {
-          batch.update(doc(db, 'salons', roomId), {
-            victime_loups: targetName,
-            notifications_mj: arrayUnion(`La meute IA a validé sa proie : ${targetName}.`),
-          });
+          actionsSummary.push(`Les Loups IA visent ${targetName}.`);
         }
-        wolfBots.forEach(w => {
-          batch.update(doc(db, 'salons', roomId, 'joueurs', w.id), { a_vote: true });
-        });
-        await batch.commit();
-        return humanWolves.length === 0
-          ? `La meute IA a confirmé sa proie : ${targetName}.`
-          : `Les loups IA soutiennent la cible ${targetName} avec leurs alliés humains.`;
+      } else {
+        // Étape 2 : un second loup répond et approuve dans le chat (9 à 13s)
+        if (wolfBots.length > 1 && Array.isArray(salonData.chat_loups) && salonData.chat_loups.length === 1) {
+          const delayAgree = getBotActionDelay(wolfBots[1].nom, 'wolf_agree', dayNumber, 9, 13);
+          if (elapsedSec >= delayAgree) {
+            const secondWolf = wolfBots[1];
+            const agreeTexts = [
+              `D'accord avec ${salonData.chat_loups[0].sender}, éliminons ${targetName} !`,
+              `Très bon choix, ${targetName} ne s'y attendra pas.`,
+              `Je vote pour ${targetName} aussi, soyons discrets et impitoyables.`,
+            ];
+            const text = agreeTexts[Math.floor(Math.random() * agreeTexts.length)];
+            const agreeMsg = {
+              id: 'bot_msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+              sender: secondWolf.nom,
+              text,
+              timestamp: Date.now(),
+              isWolf: true,
+            };
+            await updateDoc(doc(db, 'salons', roomId), {
+              chat_loups: arrayUnion(agreeMsg),
+            });
+          }
+        }
+
+        // Étape 3 : validation finale de la proie (14 à 19s)
+        const delayConfirm = getBotActionDelay(wolfBots[0].nom, 'wolf_confirm', dayNumber, 14, 19);
+        if (elapsedSec >= delayConfirm) {
+          const infectPereBot = wolfBots.find(
+            j => (j.role === 'infect-pere-des-loups' || j.role === 'pere-des-loups') && j.infection_dispo && !j.infection_repondu
+          );
+
+          if (infectPereBot) {
+            const doInfect = Math.random() < 0.5;
+            await runTransaction(db, async transaction => {
+              transaction.update(doc(db, 'salons', roomId), {
+                victime_loups: targetName,
+                infection_active: doInfect,
+                notifications_mj: arrayUnion(
+                  doInfect
+                    ? `L'Infect Père des Loups IA (${infectPereBot.nom}) a choisi d'infecter ${targetName}.`
+                    : `L'Infect Père des Loups IA (${infectPereBot.nom}) laisse la cible mourir.`
+                ),
+              });
+              transaction.update(doc(db, 'salons', roomId, 'joueurs', infectPereBot.id), {
+                a_vote: true,
+                infection_dispo: !doInfect,
+                infection_repondu: true,
+              });
+            });
+            return `L'Infect Père des Loups IA a ${doInfect ? 'infecté' : 'décidé de dévorer'} ${targetName}.`;
+          } else if (!salonData.victime_loups) {
+            const batch = writeBatch(db);
+            if (humanWolves.length === 0) {
+              batch.update(doc(db, 'salons', roomId), {
+                victime_loups: targetName,
+                notifications_mj: arrayUnion(`La meute IA a validé sa proie : ${targetName}.`),
+              });
+            }
+            wolfBots.forEach(w => {
+              batch.update(doc(db, 'salons', roomId, 'joueurs', w.id), { a_vote: true });
+            });
+            await batch.commit();
+            return humanWolves.length === 0
+              ? `La meute IA a confirmé sa proie : ${targetName}.`
+              : `Les loups IA soutiennent la cible ${targetName} avec leurs alliés humains.`;
+          }
+        }
       }
     }
   }
 
-  // F. Nuit : Sorcière
+  // F. Nuit : Sorcière (décision humaine de 6 à 12s)
   if (statut === 'nuit_sorciere') {
     const sorciereBot = aliveBots.find(j => j.role === 'sorciere' && !j.a_vote_sorciere);
     if (sorciereBot) {
-      const victim = salonData.victime_loups_visible_sorciere;
-      const canSave = victim && !sorciereBot.potion_vie_utilisee;
-      const shouldSave = canSave && Math.random() < 0.8;
+      const plannedDelay = getBotActionDelay(sorciereBot.nom, 'sorciere', dayNumber, 6, 12);
+      if (elapsedSec >= plannedDelay) {
+        const victim = salonData.victime_loups_visible_sorciere;
+        const canSave = victim && !sorciereBot.potion_vie_utilisee;
+        const shouldSave = canSave && Math.random() < 0.8;
 
-      let poisonTarget = null;
-      const canPoison = !sorciereBot.potion_mort_utilisee && (salonData.numero_jour || 1) >= 2;
-      if (canPoison && Math.random() < 0.25) {
-        const potentialVictims = alivePlayers.filter(
-          j => j.id !== sorciereBot.id && j.nom !== victim
-        );
-        if (potentialVictims.length > 0) {
-          poisonTarget = potentialVictims[Math.floor(Math.random() * potentialVictims.length)].nom;
+        let poisonTarget = null;
+        const canPoison = !sorciereBot.potion_mort_utilisee && (salonData.numero_jour || 1) >= 2;
+        if (canPoison && Math.random() < 0.25) {
+          const potentialVictims = alivePlayers.filter(
+            j => j.id !== sorciereBot.id && j.nom !== victim
+          );
+          if (potentialVictims.length > 0) {
+            poisonTarget = potentialVictims[Math.floor(Math.random() * potentialVictims.length)].nom;
+          }
         }
-      }
 
-      try {
-        await runTransaction(db, async transaction => {
-          const updatesSalon = {};
-          const updatesSorciere = { a_vote_sorciere: true };
-          const notifs = [];
+        try {
+          await runTransaction(db, async transaction => {
+            const updatesSalon = {};
+            const updatesSorciere = { a_vote_sorciere: true };
+            const notifs = [];
 
-          if (shouldSave) {
-            updatesSalon.victime_sauvee = true;
-            updatesSorciere.potion_vie_utilisee = true;
-            notifs.push(`La Sorcière IA (${sorciereBot.nom}) a sauvé la victime des loups (${victim}).`);
-          }
-          if (poisonTarget) {
-            updatesSalon.victime_sorciere = poisonTarget;
-            updatesSorciere.potion_mort_utilisee = true;
-            notifs.push(`La Sorcière IA (${sorciereBot.nom}) a empoisonné ${poisonTarget}.`);
-          }
-          if (!shouldSave && !poisonTarget) {
-            notifs.push(`La Sorcière IA (${sorciereBot.nom}) n'a utilisé aucune potion ce soir.`);
-          }
+            if (shouldSave) {
+              updatesSalon.victime_sauvee = true;
+              updatesSorciere.potion_vie_utilisee = true;
+              notifs.push(`La Sorcière IA (${sorciereBot.nom}) a sauvé la victime des loups (${victim}).`);
+            }
+            if (poisonTarget) {
+              updatesSalon.victime_sorciere = poisonTarget;
+              updatesSorciere.potion_mort_utilisee = true;
+              notifs.push(`La Sorcière IA (${sorciereBot.nom}) a empoisonné ${poisonTarget}.`);
+            }
+            if (!shouldSave && !poisonTarget) {
+              notifs.push(`La Sorcière IA (${sorciereBot.nom}) n'a utilisé aucune potion ce soir.`);
+            }
 
-          updatesSalon.notifications_mj = arrayUnion(...notifs);
-          transaction.update(doc(db, 'salons', roomId), updatesSalon);
-          transaction.update(doc(db, 'salons', roomId, 'joueurs', sorciereBot.id), updatesSorciere);
-        });
-        return `La Sorcière IA (${sorciereBot.nom}) a terminé son tour ${shouldSave ? '(a sauvé)' : ''} ${poisonTarget ? `(a empoisonné ${poisonTarget})` : ''}.`;
-      } catch (e) {
-        console.error(e);
+            updatesSalon.notifications_mj = arrayUnion(...notifs);
+            transaction.update(doc(db, 'salons', roomId), updatesSalon);
+            transaction.update(doc(db, 'salons', roomId, 'joueurs', sorciereBot.id), updatesSorciere);
+          });
+          return `La Sorcière IA (${sorciereBot.nom}) a terminé son tour ${shouldSave ? '(a sauvé)' : ''} ${poisonTarget ? `(a empoisonné ${poisonTarget})` : ''}.`;
+        } catch (e) {
+          console.error(e);
+        }
       }
     }
   }
 
-  // G. Nuit : Voleur
+  // G. Nuit : Voleur (4 à 8s)
   if (statut === 'nuit_voleur') {
     const voleurBot = aliveBots.find(j => j.role === 'voleur' && !j.a_vote);
     if (voleurBot) {
-      await updateDoc(doc(db, 'salons', roomId, 'joueurs', voleurBot.id), { a_vote: true });
-      await updateDoc(doc(db, 'salons', roomId), {
-        notifications_mj: arrayUnion(`Le Voleur IA (${voleurBot.nom}) a terminé son tour.`),
-      });
-      return `Le Voleur IA (${voleurBot.nom}) a passé son tour.`;
-    }
-  }
-
-  // H. Rôles nocturnes secondaires (Corbeau / Renard)
-  if (['nuit_cupidon', 'nuit_salvateur', 'nuit_voyante', 'nuit_loups', 'nuit_sorciere', 'nuit_voleur'].includes(statut)) {
-    const corbeauBot = aliveBots.find(j => j.role === 'corbeau' && !salonData.cible_corbeau);
-    if (corbeauBot) {
-      const candidates = alivePlayers.filter(j => j.id !== corbeauBot.id);
-      if (candidates.length > 0) {
-        const target = candidates[Math.floor(Math.random() * candidates.length)];
+      const plannedDelay = getBotActionDelay(voleurBot.nom, 'voleur', dayNumber, 4, 8);
+      if (elapsedSec >= plannedDelay) {
+        await updateDoc(doc(db, 'salons', roomId, 'joueurs', voleurBot.id), { a_vote: true });
         await updateDoc(doc(db, 'salons', roomId), {
-          cible_corbeau: target.nom,
-          notifications_mj: arrayUnion(`Le Corbeau IA (${corbeauBot.nom}) a maudit ${target.nom} (+2 voix).`),
+          notifications_mj: arrayUnion(`Le Voleur IA (${voleurBot.nom}) a terminé son tour.`),
         });
-        actionsSummary.push(`Le Corbeau IA a maudit ${target.nom}.`);
+        return `Le Voleur IA (${voleurBot.nom}) a passé son tour.`;
       }
     }
   }
 
-  // I. Journée du Village : Accusations, Défenses et Vote d'Élimination
+  // H. Rôles nocturnes secondaires (Corbeau : 5 à 11s)
+  if (['nuit_cupidon', 'nuit_salvateur', 'nuit_voyante', 'nuit_loups', 'nuit_sorciere', 'nuit_voleur'].includes(statut)) {
+    const corbeauBot = aliveBots.find(j => j.role === 'corbeau' && !salonData.cible_corbeau);
+    if (corbeauBot) {
+      const plannedDelay = getBotActionDelay(corbeauBot.nom, 'corbeau', dayNumber, 5, 11);
+      if (elapsedSec >= plannedDelay) {
+        const candidates = alivePlayers.filter(j => j.id !== corbeauBot.id);
+        if (candidates.length > 0) {
+          const target = candidates[Math.floor(Math.random() * candidates.length)];
+          await updateDoc(doc(db, 'salons', roomId), {
+            cible_corbeau: target.nom,
+            notifications_mj: arrayUnion(`Le Corbeau IA (${corbeauBot.nom}) a maudit ${target.nom} (+2 voix).`),
+          });
+          actionsSummary.push(`Le Corbeau IA a maudit ${target.nom}.`);
+        }
+      }
+    }
+  }
+
+  // I. Journée du Village : Accusations échelonnées
   if (statut === 'jour_accusation') {
     const currentVotes = salonData.votes || {};
     const aliveBots = bots.filter(b => b.statut_joueur !== 'mort' && !b.gracie_idiot);
-    const botsNeedToVote = aliveBots.filter(b => !currentVotes[b.nom]);
+    const totalAccusationDuration = salonData.duree_accusation !== undefined ? salonData.duree_accusation : 60;
+    const allAlive = joueurs.filter(j => j.statut_joueur !== 'mort');
 
-    if (botsNeedToVote.length > 0) {
-      const allAlive = joueurs.filter(j => j.statut_joueur !== 'mort');
+    // Seuls les bots dont le temps de réflexion individuel est atteint accusent maintenant
+    const botsReadyToAccuse = aliveBots.filter(b => {
+      if (currentVotes[b.nom]) return false;
+      const plannedDelay = getBotActionDelay(
+        b.nom,
+        'jour_accusation',
+        dayNumber,
+        5,
+        Math.max(12, totalAccusationDuration - 8)
+      );
+      return elapsedSec >= plannedDelay;
+    });
+
+    if (botsReadyToAccuse.length > 0) {
       const newVotesUpdates = {};
-      for (const bot of botsNeedToVote) {
+      for (const bot of botsReadyToAccuse) {
         const otherAlive = allAlive.filter(j => j.nom !== bot.nom);
         if (otherAlive.length > 0) {
-          // Un bot accuse un suspect aléatoire
-          const target = otherAlive[Math.floor(Math.random() * otherAlive.length)].nom;
-          newVotesUpdates[`votes.${bot.nom}`] = target;
+          // 85% du temps accuse un suspect, 15% n'accuse personne
+          const seed = getBotActionDelay(bot.nom, 'accuse_choice', dayNumber, 1, 100);
+          if (seed <= 15) {
+            newVotesUpdates[`votes.${bot.nom}`] = 'Personne';
+          } else {
+            const target = otherAlive[Math.floor((seed / 100) * otherAlive.length) % otherAlive.length].nom;
+            newVotesUpdates[`votes.${bot.nom}`] = target;
+          }
         }
       }
       if (Object.keys(newVotesUpdates).length > 0) {
         await updateDoc(doc(db, 'salons', roomId), newVotesUpdates);
-        actionsSummary.push(`${botsNeedToVote.length} Bot(s) ont déposé leurs accusations.`);
+        actionsSummary.push(`${botsReadyToAccuse.length} Bot(s) ont déposé leur accusation.`);
       }
     }
   }
 
+  // II. Journée du Village : Défenses progressives
   if (statut === 'jour_defense') {
     const aliveBots = bots.filter(b => b.statut_joueur !== 'mort');
     const accusedList = Array.isArray(salonData.la_liste_accuses) ? salonData.la_liste_accuses : [];
     const accusedBots = aliveBots.filter(b => accusedList.includes(b.nom));
 
     for (const accBot of accusedBots) {
-      const alreadySpoke = Array.isArray(salonData.chat_defense) && salonData.chat_defense.some(m => m.auteur === accBot.nom || m.sender === accBot.nom);
+      const alreadySpoke = Array.isArray(salonData.chat_defense) &&
+        salonData.chat_defense.some(m => m.auteur === accBot.nom || m.sender === accBot.nom);
       if (!alreadySpoke) {
-        const defenseText = ACCUSED_DEFENSE_MESSAGES[Math.floor(Math.random() * ACCUSED_DEFENSE_MESSAGES.length)];
+        const plannedDelay = getBotActionDelay(accBot.nom, 'jour_defense_plea', dayNumber, 5, 18);
+        if (elapsedSec >= plannedDelay) {
+          const defenseIndex = Math.floor(getBotActionDelay(accBot.nom, 'defense_msg', dayNumber, 0, ACCUSED_DEFENSE_MESSAGES.length));
+          const defenseText = ACCUSED_DEFENSE_MESSAGES[defenseIndex % ACCUSED_DEFENSE_MESSAGES.length];
+          const msg = {
+            id: 'bot_def_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            auteur: accBot.nom,
+            sender: accBot.nom,
+            texte: defenseText,
+            text: defenseText,
+            roleBadge: 'ACCUSÉ',
+            heure: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestamp: Date.now(),
+            isAccused: true,
+            isMj: false,
+          };
+          await updateDoc(doc(db, 'salons', roomId), {
+            chat_defense: arrayUnion(msg),
+          });
+          actionsSummary.push(`L'accusé IA ${accBot.nom} a plaidé sa défense.`);
+        }
+      }
+    }
+
+    // Réaction occasionnelle d'un spectateur IA dans le chat de défense
+    const nonAccusedBots = aliveBots.filter(b => !accusedList.includes(b.nom));
+    if (nonAccusedBots.length > 0 && Array.isArray(salonData.chat_defense) && salonData.chat_defense.length >= 1) {
+      const hasSpectatorComment = salonData.chat_defense.some(m => !m.isAccused && !m.isMj);
+      if (!hasSpectatorComment && elapsedSec >= 19) {
+        const commentator = nonAccusedBots[0];
+        const reactIndex = Math.floor(getBotActionDelay(commentator.nom, 'spectator_comment', dayNumber, 0, ACCUSED_CITIZEN_REACTIONS.length));
+        const reactText = ACCUSED_CITIZEN_REACTIONS[reactIndex % ACCUSED_CITIZEN_REACTIONS.length];
         const msg = {
-          id: 'bot_def_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-          auteur: accBot.nom,
-          sender: accBot.nom,
-          texte: defenseText,
-          text: defenseText,
-          roleBadge: 'ACCUSÉ',
+          id: 'bot_react_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+          auteur: commentator.nom,
+          sender: commentator.nom,
+          texte: reactText,
+          text: reactText,
+          roleBadge: 'VILLAGEOIS',
           heure: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           timestamp: Date.now(),
-          isAccused: true,
+          isAccused: false,
           isMj: false,
         };
         await updateDoc(doc(db, 'salons', roomId), {
           chat_defense: arrayUnion(msg),
         });
-        actionsSummary.push(`L'accusé IA ${accBot.nom} a plaidé sa défense.`);
+        actionsSummary.push(`Le spectateur IA ${commentator.nom} a réagi à la défense.`);
       }
     }
   }
 
+  // III. Journée du Village : Vote d'élimination échelonné
   if (statut === 'jour_vote') {
     const currentVotes = salonData.votes || {};
     const aliveBots = bots.filter(b => b.statut_joueur !== 'mort' && !b.gracie_idiot);
+    const totalVoteDuration = salonData.duree_vote !== undefined ? salonData.duree_vote : 60;
     const accusedList = Array.isArray(salonData.la_liste_accuses) && salonData.la_liste_accuses.length > 0
       ? salonData.la_liste_accuses
       : joueurs.filter(j => j.statut_joueur !== 'mort').map(j => j.nom);
 
-    const botsNeedToVote = aliveBots.filter(b => !currentVotes[b.nom]);
-    if (botsNeedToVote.length > 0) {
+    // Les bots votent de manière échelonnée tout au long de la période de vote
+    const botsReadyToVote = aliveBots.filter(b => {
+      if (currentVotes[b.nom]) return false;
+      const plannedDelay = getBotActionDelay(
+        b.nom,
+        'jour_vote',
+        dayNumber,
+        6,
+        Math.max(12, totalVoteDuration - 7)
+      );
+      return elapsedSec >= plannedDelay;
+    });
+
+    if (botsReadyToVote.length > 0) {
       const newVotesUpdates = {};
-      for (const bot of botsNeedToVote) {
-        // Le bot évite de voter pour lui-même s'il y a un autre accusé
+      for (const bot of botsReadyToVote) {
         let choices = accusedList.filter(n => n !== bot.nom);
         if (choices.length === 0) choices = accusedList;
-        const target = choices[Math.floor(Math.random() * choices.length)];
+        const seed = getBotActionDelay(bot.nom, 'vote_target', dayNumber, 0, choices.length * 10);
+        const target = choices[Math.floor(seed) % choices.length];
         newVotesUpdates[`votes.${bot.nom}`] = target;
       }
-      await updateDoc(doc(db, 'salons', roomId), newVotesUpdates);
-      actionsSummary.push(`${botsNeedToVote.length} Bot(s) ont voté l'élimination parmi les accusés.`);
+      if (Object.keys(newVotesUpdates).length > 0) {
+        await updateDoc(doc(db, 'salons', roomId), newVotesUpdates);
+        actionsSummary.push(`${botsReadyToVote.length} Bot(s) ont voté l'élimination parmi les accusés.`);
+      }
     }
   }
 

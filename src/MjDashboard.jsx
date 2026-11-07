@@ -78,28 +78,36 @@ const PHASE_BADGE_META = {
 };
 
 /**
- * Modal de réglage des durées des phases de jour par le Maître du Jeu.
+ * Modal de réglage des durées et du rythme de jeu par le Maître du Jeu.
  */
 function GameTimeSettingsModal({ isOpen, onClose, roomId, salonData }) {
+  const [dureeNuitPhase, setDureeNuitPhase]   = useState(salonData?.duree_nuit_phase ?? 18);
+  const [dureeMatin, setDureeMatin]           = useState(salonData?.duree_matin ?? 14);
   const [dureeAccusation, setDureeAccusation] = useState(salonData?.duree_accusation ?? 60);
   const [dureeDefense, setDureeDefense]       = useState(salonData?.duree_defense ?? 60);
   const [dureeVote, setDureeVote]             = useState(salonData?.duree_vote ?? 60);
 
   useEffect(() => {
     if (salonData) {
+      if (salonData.duree_nuit_phase !== undefined) setDureeNuitPhase(salonData.duree_nuit_phase);
+      if (salonData.duree_matin !== undefined)      setDureeMatin(salonData.duree_matin);
       if (salonData.duree_accusation !== undefined) setDureeAccusation(salonData.duree_accusation);
       if (salonData.duree_defense !== undefined)    setDureeDefense(salonData.duree_defense);
       if (salonData.duree_vote !== undefined)       setDureeVote(salonData.duree_vote);
     }
-  }, [salonData?.duree_accusation, salonData?.duree_defense, salonData?.duree_vote]);
+  }, [salonData?.duree_nuit_phase, salonData?.duree_matin, salonData?.duree_accusation, salonData?.duree_defense, salonData?.duree_vote]);
 
   if (!isOpen) return null;
 
-  const presets = [30, 45, 60, 90, 120, 180];
+  const presetsDay = [30, 45, 60, 90, 120, 180];
+  const presetsNight = [12, 16, 18, 24, 30];
+  const presetsMatin = [8, 12, 14, 20];
 
   const handleSave = async () => {
     try {
       await updateDoc(doc(db, 'salons', roomId), {
+        duree_nuit_phase: Number(dureeNuitPhase) || 18,
+        duree_matin:      Number(dureeMatin) || 14,
         duree_accusation: Number(dureeAccusation) || 60,
         duree_defense:    Number(dureeDefense) || 60,
         duree_vote:       Number(dureeVote) || 60,
@@ -113,11 +121,11 @@ function GameTimeSettingsModal({ isOpen, onClose, roomId, salonData }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-      <div className="glass-panel" style={{ width: '100%', maxWidth: '520px', borderRadius: '1rem', padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+      <div className="glass-panel" style={{ width: '100%', maxWidth: '540px', maxHeight: '90vh', overflowY: 'auto', borderRadius: '1rem', padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--card-border)', paddingBottom: '0.75rem' }}>
           <h3 className="title-font" style={{ margin: 0, fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Clock size={20} style={{ color: 'var(--primary)' }} />
-            Paramètres des Temps de Jeu (Journée)
+            Paramètres des Temps & Rythme de Jeu
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
             <X size={20} />
@@ -125,17 +133,87 @@ function GameTimeSettingsModal({ isOpen, onClose, roomId, salonData }) {
         </div>
 
         <p className="text-font text-muted" style={{ fontSize: '0.86rem', marginBottom: '1.25rem' }}>
-          Définissez la durée allouée pour chaque phase diurne. Le Maître du Jeu peut toujours avancer manuellement à tout moment si tout le monde a terminé.
+          Ajustez le tempo de la partie pour laisser aux joueurs le temps de comprendre les événements et de délibérer sans précipitation.
         </p>
 
-        {/* 1. Accusations */}
+        {/* 1. Rythme de la nuit */}
+        <div style={{ marginBottom: '1.15rem', padding: '10px 12px', background: 'rgba(30,58,138,0.18)', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.3)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.88rem', fontWeight: 700 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#93c5fd' }}>
+              <Moon size={15} /> Durée par appel de nuit (Voyante, Loups, etc.) :
+            </span>
+            <span style={{ color: '#60a5fa' }}>{dureeNuitPhase}s</span>
+          </div>
+          <p className="text-font text-muted" style={{ fontSize: '0.76rem', margin: '0 0 8px' }}>
+            Temps alloué à chaque rôle nocturne pour se réveiller, agir et se rendormir dans le calme.
+          </p>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {presetsNight.map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setDureeNuitPhase(s)}
+                className="text-font"
+                style={{
+                  padding: '4px 9px',
+                  borderRadius: '14px',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: dureeNuitPhase === s ? '#3b82f6' : 'rgba(255,255,255,0.06)',
+                  color: dureeNuitPhase === s ? '#fff' : 'var(--text-color)',
+                  border: dureeNuitPhase === s ? '1px solid #3b82f6' : '1px solid var(--card-border)',
+                }}
+              >
+                {s}s {s === 18 ? '(défaut)' : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 2. Pause du matin */}
+        <div style={{ marginBottom: '1.15rem', padding: '10px 12px', background: 'rgba(245,158,11,0.12)', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.3)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.88rem', fontWeight: 700 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#fbbf24' }}>
+              <Sun size={15} /> Bilan au lever du soleil (Matin) :
+            </span>
+            <span style={{ color: '#f59e0b' }}>{dureeMatin}s</span>
+          </div>
+          <p className="text-font text-muted" style={{ fontSize: '0.76rem', margin: '0 0 8px' }}>
+            Temps de pause solennelle au réveil du village pour découvrir les victimes de la nuit et leurs rôles.
+          </p>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {presetsMatin.map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setDureeMatin(s)}
+                className="text-font"
+                style={{
+                  padding: '4px 9px',
+                  borderRadius: '14px',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: dureeMatin === s ? '#f59e0b' : 'rgba(255,255,255,0.06)',
+                  color: dureeMatin === s ? '#0f172a' : 'var(--text-color)',
+                  border: dureeMatin === s ? '1px solid #f59e0b' : '1px solid var(--card-border)',
+                }}
+              >
+                {s}s {s === 14 ? '(défaut)' : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. Accusations */}
         <div style={{ marginBottom: '1.15rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem', fontWeight: 700 }}>
             <span>Temps d'Accusations :</span>
             <span style={{ color: 'var(--primary)' }}>{dureeAccusation} secondes</span>
           </div>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {presets.map(s => (
+            {presetsDay.map(s => (
               <button
                 key={s}
                 type="button"
@@ -158,14 +236,14 @@ function GameTimeSettingsModal({ isOpen, onClose, roomId, salonData }) {
           </div>
         </div>
 
-        {/* 2. Défenses */}
+        {/* 4. Défenses */}
         <div style={{ marginBottom: '1.15rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem', fontWeight: 700 }}>
             <span>Temps de Défense des Accusés :</span>
             <span style={{ color: '#8b5cf6' }}>{dureeDefense} secondes</span>
           </div>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {presets.map(s => (
+            {presetsDay.map(s => (
               <button
                 key={s}
                 type="button"
@@ -188,14 +266,14 @@ function GameTimeSettingsModal({ isOpen, onClose, roomId, salonData }) {
           </div>
         </div>
 
-        {/* 3. Vote d'élimination */}
+        {/* 5. Vote d'élimination */}
         <div style={{ marginBottom: '1.4rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem', fontWeight: 700 }}>
             <span>Temps de Vote d'Élimination :</span>
             <span style={{ color: '#ef4444' }}>{dureeVote} secondes</span>
           </div>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {presets.map(s => (
+            {presetsDay.map(s => (
               <button
                 key={s}
                 type="button"
@@ -357,7 +435,9 @@ export default function MjDashboard() {
         // ── Champs jour ──
         la_liste_accuses: [],
         votes: {},
-        // ── Durées paramétrables du jour (secondes) ──
+        // ── Durées paramétrables des phases (secondes) ──
+        duree_nuit_phase: 18,
+        duree_matin: 14,
         duree_accusation: 60,
         duree_defense: 60,
         duree_vote: 60,
@@ -742,6 +822,23 @@ export default function MjDashboard() {
     } catch (e) {
       console.error(e);
       alert('Erreur résolution nuit');
+    }
+  };
+
+  /**
+   * Ouverture manuelle immédiate des accusations depuis le matin.
+   */
+  const handleOpenAccusations = async () => {
+    try {
+      await updateDoc(doc(db, 'salons', roomId), {
+        statut: 'jour_accusation',
+        la_liste_accuses: [],
+        votes: {},
+        phase_started_at: Date.now(),
+        auto_mj_phase_started_at: Date.now(),
+      });
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -1952,9 +2049,16 @@ export default function MjDashboard() {
         {/* MATIN */}
         {isPhase('matin') && (
           <div>
-            <p className="text-font text-warning" style={{ marginBottom: '1rem', fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Sun size={20} /> Le village se réveille — Bilan de la nuit avant révélation.
-            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '8px' }}>
+              <p className="text-font text-warning" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sun size={20} /> Le village se réveille — Bilan de la nuit avant révélation.
+              </p>
+              <PhaseTimer
+                phaseStartedAt={salonData.phase_started_at}
+                durationSec={salonData.duree_matin !== undefined ? salonData.duree_matin : 14}
+                label="Ouverture des débats"
+              />
+            </div>
 
             {salonData.notif_mj && (
               <div style={{ marginBottom: '1rem', padding: '12px 16px', background: 'rgba(100,116,139,0.2)', border: '2px solid #64748b', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1991,11 +2095,11 @@ export default function MjDashboard() {
             </ul>
 
             <button
-              onClick={handleApplyNightDeaths}
+              onClick={salonData.morts_nuit_details ? handleOpenAccusations : handleApplyNightDeaths}
               className="btn-primary title-font glow-button"
               style={{ background: '#f59e0b' }}
             >
-              Appliquer les morts et ouvrir les débats <ChevronRight size={20} />
+              {salonData.morts_nuit_details ? "Ouvrir les accusations maintenant" : "Appliquer les morts et ouvrir les débats"} <ChevronRight size={20} />
             </button>
           </div>
         )}

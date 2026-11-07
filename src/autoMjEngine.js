@@ -5,6 +5,7 @@ import {
 import { db } from './firebase';
 import { isWolf, ALL_NIGHT_PHASES, shuffleArray } from './gameLogic';
 import { getRole } from './rolesData';
+import { isBot, runBotTurnStep } from './aiBotEngine';
 
 /**
  * Calcule la liste ordonnée des phases de nuit actives selon l'état des joueurs.
@@ -111,12 +112,19 @@ export async function executeStartGameAuto(roomId, salonData, joueurs = []) {
 }
 
 /**
- * Avance vers la phase de nuit suivante.
+ * Avance vers la phase de nuit suivante ou résout les morts pour ouvrir le matin.
  */
 export async function executeNextNightPhaseAuto(roomId, salonData, joueurs = []) {
   const next = getNextNightPhaseAuto(salonData.statut, joueurs);
+
+  if (next === 'matin') {
+    // La séquence nocturne est terminée : résolution des événements et lever du soleil
+    return await executeApplyNightDeathsAuto(roomId, salonData, joueurs, 'matin');
+  }
+
   const updates = {
     statut: next,
+    phase_started_at: Date.now(),
     auto_mj_phase_started_at: Date.now(),
     auto_mj_last_tick: Date.now(),
   };
@@ -136,9 +144,9 @@ export async function executeNextNightPhaseAuto(roomId, salonData, joueurs = [])
 }
 
 /**
- * Résolution automatique de la nuit : calcul des morts et passage au lever du jour.
+ * Résolution automatique de la nuit : calcul des morts et passage au lever du jour (matin).
  */
-export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = []) {
+export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = [], targetStatut = 'matin') {
   try {
     await runTransaction(db, async transaction => {
       let diedFromLoups    = false;
@@ -277,7 +285,7 @@ export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = [
       const gameEnd = checkGameEnd(updatedJoueurs);
 
       const salonUpdates = {
-        statut: gameEnd || 'jour_accusation',
+        statut: gameEnd || targetStatut || 'matin',
         morts_nuit: {
           loups:    diedFromLoups    ? salonData.victime_loups    : null,
           sorciere: diedFromSorciere ? salonData.victime_sorciere : null,
@@ -304,6 +312,21 @@ export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = [
     console.error('Erreur executeApplyNightDeathsAuto:', err);
     return null;
   }
+}
+
+/**
+ * Ouverture automatique de la phase d'accusations du village depuis 'matin'.
+ */
+export async function executeOpenAccusationsFromMatinAuto(roomId, salonData) {
+  await updateDoc(doc(db, 'salons', roomId), {
+    statut: 'jour_accusation',
+    la_liste_accuses: [],
+    votes: {},
+    phase_started_at: Date.now(),
+    auto_mj_phase_started_at: Date.now(),
+    auto_mj_last_tick: Date.now(),
+  });
+  return 'Matin terminé : ouverture des accusations du village.';
 }
 
 /**
@@ -714,10 +737,19 @@ export async function runAutoMjStep(roomId, salonData, joueurs = []) {
   if (now - lastTick < 1800) return null; // Throttle distributed triggers
 
   const statut = salonData.statut;
-  const phaseStartedAt = salonData.auto_mj_phase_started_at || salonData.created_at || now;
+  const phaseStartedAt = salonData.auto_mj_phase_started_at || salonData.phase_started_at || salonData.created_at || now;
   const elapsedSec = (now - phaseStartedAt) / 1000;
 
   const alivePlayers = joueurs.filter(j => j.statut_joueur !== 'mort');
+
+  // ── Synchronisation autonome des Bots IA (actions échelonnées et humanisées) ──
+  if (joueurs.some(j => isBot(j))) {
+    try {
+      await runBotTurnStep(roomId, salonData, joueurs);
+    } catch (e) {
+      console.error('Erreur runBotTurnStep dans runAutoMjStep:', e);
+    }
+  }
 
   // 1. EN ATTENTE : Lancement automatique dès que tout le monde est prêt
   if (statut === 'en_attente') {
@@ -731,59 +763,84 @@ export async function runAutoMjStep(roomId, salonData, joueurs = []) {
     return null;
   }
 
-  // 2. PHASES DE NUIT
+  // 2. PHASES DE NUIT (Rythme solennel, suspens et temps de lecture humanisé)
+  const baseNightSec = salonData.duree_nuit_phase !== undefined ? salonData.duree_nuit_phase : 18;
+
   if (statut === 'nuit_cupidon') {
+    const minSec = Math.max(14, baseNightSec - 2);
+    const maxSec = minSec + 25;
     const hasCupidon = alivePlayers.some(j => j.role === 'cupidon' && !j.pouvoir_utilise);
     const coupleFormed = Array.isArray(salonData.couple) && salonData.couple.length === 2;
-    if (!hasCupidon || coupleFormed || elapsedSec >= 25) {
+    if (!hasCupidon || (coupleFormed && elapsedSec >= minSec) || elapsedSec >= maxSec) {
       return await executeNextNightPhaseAuto(roomId, salonData, joueurs);
     }
   }
 
   if (statut === 'nuit_salvateur') {
+    const minSec = Math.max(13, baseNightSec - 3);
+    const maxSec = minSec + 25;
     const salvateurs = alivePlayers.filter(j => j.role === 'salvateur');
     const salvateurDone = salvateurs.length === 0 || salvateurs.every(s => s.a_vote);
-    if (salvateurDone || elapsedSec >= 22) {
+    if ((salvateurDone && elapsedSec >= minSec) || elapsedSec >= maxSec) {
       return await executeNextNightPhaseAuto(roomId, salonData, joueurs);
     }
   }
 
   if (statut === 'nuit_voyante') {
+    const minSec = Math.max(15, baseNightSec - 1);
+    const maxSec = minSec + 25;
     const voyantes = alivePlayers.filter(j => j.role === 'voyante');
     const voyanteDone = voyantes.length === 0 || voyantes.every(v => v.a_vote);
-    if (voyanteDone || elapsedSec >= 22) {
+    // Conserver la phase pour laisser le temps à la Voyante d'examiner la carte révélée
+    if ((voyanteDone && elapsedSec >= minSec) || elapsedSec >= maxSec) {
       return await executeNextNightPhaseAuto(roomId, salonData, joueurs);
     }
   }
 
   if (statut === 'nuit_loups') {
+    const minSec = Math.max(20, baseNightSec + 4);
+    const maxSec = minSec + 30;
     const wolves = alivePlayers.filter(j => isWolf(j));
     const targetChosen = !!salonData.victime_loups;
     const allWolvesVoted = wolves.length > 0 && wolves.every(w => w.a_vote);
-    if (wolves.length === 0 || targetChosen || allWolvesVoted || elapsedSec >= 35) {
+    const wolvesDone = wolves.length === 0 || (targetChosen && allWolvesVoted);
+    if ((wolvesDone && elapsedSec >= minSec) || elapsedSec >= maxSec) {
       return await executeNextNightPhaseAuto(roomId, salonData, joueurs);
     }
   }
 
   if (statut === 'nuit_sorciere') {
+    const minSec = Math.max(16, baseNightSec);
+    const maxSec = minSec + 25;
     const sorcieres = alivePlayers.filter(j => j.role === 'sorciere' && (!j.potion_vie_utilisee || !j.potion_mort_utilisee));
     const sorciereDone = sorcieres.length === 0 || sorcieres.every(s => s.a_vote_sorciere);
-    if (sorciereDone || elapsedSec >= 25) {
+    if ((sorciereDone && elapsedSec >= minSec) || elapsedSec >= maxSec) {
       return await executeNextNightPhaseAuto(roomId, salonData, joueurs);
     }
   }
 
   if (statut === 'nuit_voleur') {
+    const minSec = Math.max(12, baseNightSec - 5);
+    const maxSec = minSec + 20;
     const voleurs = alivePlayers.filter(j => j.role === 'voleur');
     const voleurDone = voleurs.length === 0 || voleurs.every(v => v.a_vote);
-    if (voleurDone || elapsedSec >= 20) {
+    if ((voleurDone && elapsedSec >= minSec) || elapsedSec >= maxSec) {
       return await executeNextNightPhaseAuto(roomId, salonData, joueurs);
     }
   }
 
-  // 3. MATIN : Résolution de la nuit
+  // 3. MATIN : Bilan au lever du soleil et pause solennelle
   if (statut === 'matin') {
-    return await executeApplyNightDeathsAuto(roomId, salonData, joueurs);
+    const dureeMatin = salonData.duree_matin !== undefined ? salonData.duree_matin : 14;
+    // Si la nuit n'avait pas encore été calculée dans les détails, on la calcule
+    if (!salonData.morts_nuit_details && !salonData.morts_nuit) {
+      return await executeApplyNightDeathsAuto(roomId, salonData, joueurs, 'matin');
+    }
+    // Après expiration de dureeMatin, le village commence les accusations
+    if (elapsedSec >= dureeMatin) {
+      return await executeOpenAccusationsFromMatinAuto(roomId, salonData);
+    }
+    return null;
   }
 
   // 4. JOUR ACCUSATIONS : Délibérations et désignation des suspects
@@ -797,8 +854,11 @@ export async function runAutoMjStep(roomId, salonData, joueurs = []) {
       return Boolean(val);
     }).length;
 
-    // Si tout le monde a accusé ou si le temps limite d'accusation est atteint
-    if ((voters.length > 0 && votedCount >= voters.length) || (dureeAccusation > 0 && elapsedSec >= dureeAccusation)) {
+    // Débat minimal avant clôture automatique pour éviter l'effet robotique trop rapide
+    const minAccusationSec = Math.min(30, Math.floor(dureeAccusation * 0.6));
+    const allVoted = voters.length > 0 && votedCount >= voters.length;
+
+    if ((allVoted && elapsedSec >= minAccusationSec) || (dureeAccusation > 0 && elapsedSec >= dureeAccusation)) {
       return await executeCloseAccusationsAuto(roomId, salonData, joueurs);
     }
   }
@@ -822,22 +882,23 @@ export async function runAutoMjStep(roomId, salonData, joueurs = []) {
       return Boolean(val);
     }).length;
 
-    // Si tout le monde a voté, ou après expiration du délai de vote
-    if ((voters.length > 0 && votedCount >= voters.length) || (dureeVote > 0 && elapsedSec >= dureeVote)) {
+    const minVoteSec = Math.min(25, Math.floor(dureeVote * 0.5));
+    const allVoted = voters.length > 0 && votedCount >= voters.length;
+
+    if ((allVoted && elapsedSec >= minVoteSec) || (dureeVote > 0 && elapsedSec >= dureeVote)) {
       return await executeApplyDaySentenceAuto(roomId, salonData, joueurs);
     }
   }
 
-  // 5. JOUR RÉSOLUTION : Affichage de la mort et du rôle puis passage à la nuit suivante
+  // 7. JOUR RÉSOLUTION : Affichage de la mort et du rôle puis passage à la nuit suivante
   if (statut === 'jour_resolution') {
-    // Vérifier si un chasseur mort doit tirer
     const chasseurEnAttente = alivePlayers.some(j => j.role === 'chasseur' && j.statut_joueur === 'mort' && j.tir_chasseur_fait === false);
     if (chasseurEnAttente) {
-      return null; // On attend impérativement le tir de vengeance du chasseur
+      return null;
     }
 
-    // Pause de 12 secondes pour que tout le monde voie qui est mort et son rôle
-    if (elapsedSec >= 12) {
+    // Pause de 14 secondes pour que tout le monde voie qui est mort et son rôle
+    if (elapsedSec >= 14) {
       return await executeNextNightAuto(roomId, salonData, joueurs);
     }
   }

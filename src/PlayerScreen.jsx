@@ -2107,6 +2107,27 @@ export default function PlayerScreen() {
           )}
         </div>
 
+        {/* ── 0. LEVER DU SOLEIL & BILAN DU MATIN (MATIN) ─────────────────── */}
+        {salonData.statut === 'matin' && (
+          <div style={{ marginTop: '1.5rem', textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '8px' }}>
+              <h3 className="title-font" style={{ color: '#f59e0b', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.15rem' }}>
+                <Sun size={20} /> Le Village se Réveille
+              </h3>
+              <PhaseTimer
+                phaseStartedAt={salonData.phase_started_at}
+                durationSec={salonData.duree_matin !== undefined ? salonData.duree_matin : 14}
+                label="Ouverture des débats"
+              />
+            </div>
+            <div style={{ padding: '1.15rem 1.25rem', background: 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(15,23,42,0.6))', border: '1.5px solid rgba(245,158,11,0.4)', borderRadius: '14px', marginBottom: '1rem' }}>
+              <p className="text-font" style={{ fontSize: '0.92rem', color: 'var(--text-color)', lineHeight: 1.5, margin: 0 }}>
+                La nuit est terminée, le soleil se lève sur le village. Prenez connaissance des événements nocturnes et des victimes ci-dessous avant l'ouverture des accusations.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* ── 1. PHASE D'ACCUSATIONS DU VILLAGE (JOUR_ACCUSATION) ─────────── */}
         {salonData.statut === 'jour_accusation' && (
           <div style={{ marginTop: '1.5rem', textAlign: 'left' }}>
