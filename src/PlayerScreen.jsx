@@ -375,6 +375,7 @@ export default function PlayerScreen() {
   const [cibleMortLocal, setCibleMortLocal]                   = useState(null);
   const [cibleChasseur, setCibleChasseur]                     = useState(null);
   const [corbeauCible, setCorbeauCible]                       = useState(null);
+  const [cibleLoupBlanc, setCibleLoupBlanc]                   = useState(null);
   const [renardResult, setRenardResult]                       = useState(null);
 
   // ── Boucle de Maître du Jeu Automatisé ───────────────────────────────────────
@@ -919,10 +920,11 @@ export default function PlayerScreen() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ─── Early return : Fin de partie ──────────────────────────────────────────
-  if (salonData?.statut === 'fin_village' || salonData?.statut === 'fin_loups' || salonData?.statut === 'fin_ange') {
-    const isVillageWin = salonData.statut === 'fin_village';
-    const isAngeWin    = salonData.statut === 'fin_ange';
-    const winColor     = isVillageWin ? '#10b981' : isAngeWin ? '#fbbf24' : '#ef4444';
+  if (salonData?.statut === 'fin_village' || salonData?.statut === 'fin_loups' || salonData?.statut === 'fin_ange' || salonData?.statut === 'fin_loup_blanc') {
+    const isVillageWin   = salonData.statut === 'fin_village';
+    const isAngeWin      = salonData.statut === 'fin_ange';
+    const isLoupBlancWin = salonData.statut === 'fin_loup_blanc';
+    const winColor       = isVillageWin ? '#10b981' : isAngeWin ? '#fbbf24' : isLoupBlancWin ? '#f1f5f9' : '#ef4444';
 
     return (
       <div className="player-screen">
@@ -937,14 +939,18 @@ export default function PlayerScreen() {
               ? 'VICTOIRE DU VILLAGE !'
               : isAngeWin
                 ? "VICTOIRE DE L'ANGE !"
-                : 'VICTOIRE DES LOUPS !'}
+                : isLoupBlancWin
+                  ? 'VICTOIRE DU LOUP-GAROU BLANC !'
+                  : 'VICTOIRE DES LOUPS !'}
           </h1>
           <p className="text-font" style={{ fontSize: '1.05rem', color: 'var(--text-color)', marginBottom: '2rem' }}>
             {isVillageWin
               ? 'Tous les Loups-Garous ont été éliminés !'
               : isAngeWin
                 ? "L'Ange s'est fait éliminer au tout premier vote et gagne seul !"
-                : 'La meute a dévoré le village !'}
+                : isLoupBlancWin
+                  ? 'Le Loup-Garou Blanc a éliminé la meute et le village : il est l’unique survivant !'
+                  : 'La meute a dévoré le village !'}
           </p>
 
           <div className="glass-panel" style={{ width: '100%', padding: '1.25rem', borderRadius: '1.25rem', textAlign: 'left' }}>
@@ -981,12 +987,12 @@ export default function PlayerScreen() {
 
   const isDead          = me.statut_joueur === 'mort';
   const allAlivePlayers = joueurs.filter(j => j.statut_joueur !== 'mort');
-  const isMeLoup        = isWolf(me);
-  const loupTargets     = allAlivePlayers.filter(j => !isWolf(j));
-  const compagnonsLoups = isMeLoup
-    ? joueurs.filter(j => isWolf(j) && j.id !== me.id && j.statut_joueur !== 'mort')
-    : [];
-  const isNightMode     = ALL_NIGHT_PHASES.includes(salonData?.statut);
+  const isMeLoup               = isWolf(me);
+  const loupTargets            = allAlivePlayers.filter(j => !isWolf(j));
+  const allPackMembers         = isMeLoup ? joueurs.filter(j => isWolf(j) && j.id !== me.id) : [];
+  const compagnonsLoupsVivants = allPackMembers.filter(j => j.statut_joueur !== 'mort');
+  const compagnonsLoups        = compagnonsLoupsVivants;
+  const isNightMode            = ALL_NIGHT_PHASES.includes(salonData?.statut);
 
   // Vote simultané — lecture depuis le document salon
   const monVote = salonData?.votes?.[me.nom] || null;
@@ -1399,19 +1405,73 @@ export default function PlayerScreen() {
               </div>
             )}
 
-            {/* Compagnons loups */}
+            {/* Meute des Loups-Garous (accessible à tous les loups, y compris le Loup Blanc) */}
             {isMeLoup && (
               <div style={{ padding: '1rem 1.15rem', background: 'rgba(239,68,68,0.1)', border: '1.5px solid #ef4444', borderRadius: '14px' }}>
-                <p className="title-font" style={{ margin: '0 0 8px', color: '#ef4444', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <PawPrint size={16} /> Meute des Loups-Garous :
-                </p>
-                {compagnonsLoups.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {compagnonsLoups.map(j => {
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <p className="title-font" style={{ margin: 0, color: '#ef4444', fontSize: '0.98rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <PawPrint size={18} /> Votre Meute de Loups-Garous :
+                  </p>
+                  <span style={{ fontSize: '0.78rem', padding: '2px 8px', borderRadius: '10px', background: 'rgba(239,68,68,0.2)', color: '#fca5a5', fontWeight: 600 }}>
+                    {compagnonsLoupsVivants.length + 1} loup(s) en vie
+                  </span>
+                </div>
+
+                {me.role === 'loup-blanc' && (
+                  <div style={{ marginBottom: '10px', padding: '8px 10px', background: 'rgba(241,245,249,0.1)', border: '1px solid rgba(241,245,249,0.25)', borderRadius: '8px', fontSize: '0.82rem', color: '#e2e8f0' }}>
+                    <span style={{ fontWeight: 700 }}>Rôle spécial : Loup-Garou Blanc</span>
+                    <p style={{ margin: '3px 0 0', opacity: 0.9 }}>
+                      Vous chassez la nuit avec la meute ci-dessous. Immédiatement après, vous vous réveillez seul en secret pour éliminer l'un d'eux afin de remporter la victoire solitaire !
+                    </p>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {/* Le joueur lui-même */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '7px 10px', background: 'rgba(239,68,68,0.18)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.4)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span className="text-font" style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>{me.nom}</span>
+                      <span style={{ fontSize: '0.72rem', background: '#ef4444', color: '#fff', padding: '1px 6px', borderRadius: '6px', fontWeight: 700 }}>Vous</span>
+                    </div>
+                    {myRoleData && (
+                      <RoleChip
+                        roleObj={myRoleData}
+                        onSelectRole={r => setInspectRole(r)}
+                        suffix={me.est_infecte ? '(Infecté)' : undefined}
+                      />
+                    )}
+                  </div>
+
+                  {/* Les autres membres de la meute */}
+                  {allPackMembers.length > 0 ? (
+                    allPackMembers.map(j => {
                       const rObj = getRole(j.role);
+                      const isMort = j.statut_joueur === 'mort';
                       return (
-                        <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 8px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                          <span className="text-font" style={{ fontWeight: 700, fontSize: '0.88rem', color: '#fca5a5' }}>{j.nom}</span>
+                        <div
+                          key={j.id}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '7px 10px',
+                            background: isMort ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.3)',
+                            borderRadius: '8px',
+                            border: isMort ? '1px dashed rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.25)',
+                            opacity: isMort ? 0.6 : 1,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span className="text-font" style={{ fontWeight: 700, fontSize: '0.88rem', color: isMort ? '#94a3b8' : '#fca5a5', textDecoration: isMort ? 'line-through' : 'none' }}>
+                              {j.nom}
+                            </span>
+                            {isMort && (
+                              <span style={{ fontSize: '0.7rem', background: 'rgba(239,68,68,0.2)', color: '#f87171', padding: '1px 5px', borderRadius: '4px' }}>
+                                Éliminé
+                              </span>
+                            )}
+                          </div>
                           {rObj && (
                             <RoleChip
                               roleObj={rObj}
@@ -1421,13 +1481,13 @@ export default function PlayerScreen() {
                           )}
                         </div>
                       );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-font" style={{ margin: 0, color: '#fca5a5', fontSize: '0.86rem' }}>
-                    Vous êtes le seul loup en vie ce soir.
-                  </p>
-                )}
+                    })
+                  ) : (
+                    <p className="text-font" style={{ margin: '4px 0 0', color: '#fca5a5', fontSize: '0.84rem' }}>
+                      Vous êtes le seul loup de la meute.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1436,23 +1496,25 @@ export default function PlayerScreen() {
         {/* ── BANDEAU PHASE DE NUIT ────────────────────────────────────────── */}
         {isNightMode && (() => {
           const NIGHT_META = {
-            nuit_cupidon:   { roleId: 'cupidon',    label: 'Cupidon lie deux âmes...',            color: '#ec4899', bg: 'rgba(236,72,153,0.12)' },
-            nuit_voleur:    { roleId: 'voleur',     label: 'Le Voleur rôde en silence...',        color: '#a1a1aa', bg: 'rgba(161,161,170,0.12)' },
-            nuit_salvateur: { roleId: 'salvateur',  label: 'Le Salvateur protège le village...',  color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
-            nuit_voyante:   { roleId: 'voyante',    label: 'La Voyante observe les astres...',    color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
-            nuit_loups:     { roleId: 'loup-garou', label: 'La meute de loups chasse...',         color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-            nuit_sorciere:  { roleId: 'sorciere',   label: 'La Sorcière prépare ses potions...',  color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)' },
+            nuit_cupidon:    { roleId: 'cupidon',    label: 'Cupidon lie deux âmes...',            color: '#ec4899', bg: 'rgba(236,72,153,0.12)' },
+            nuit_voleur:     { roleId: 'voleur',     label: 'Le Voleur rôde en silence...',        color: '#a1a1aa', bg: 'rgba(161,161,170,0.12)' },
+            nuit_salvateur:  { roleId: 'salvateur',  label: 'Le Salvateur protège le village...',  color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
+            nuit_voyante:    { roleId: 'voyante',    label: 'La Voyante observe les astres...',    color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+            nuit_loups:      { roleId: 'loup-garou', label: 'La meute de loups chasse...',         color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+            nuit_loup_blanc: { roleId: 'loup-blanc', label: 'Le Loup-Garou Blanc rôde en secret...', color: '#cbd5e1', bg: 'rgba(203, 213, 225, 0.12)' },
+            nuit_sorciere:   { roleId: 'sorciere',   label: 'La Sorcière prépare ses potions...',  color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)' },
           };
           const phaseInfo = NIGHT_META[salonData.statut];
           if (!phaseInfo) return null;
 
           const isActiveRole =
-            (salonData.statut === 'nuit_cupidon'   && me.role === 'cupidon'   && !me.pouvoir_utilise) ||
-            (salonData.statut === 'nuit_voleur'    && me.role === 'voleur'    && !me.a_vote) ||
-            (salonData.statut === 'nuit_salvateur' && me.role === 'salvateur' && !me.a_vote) ||
-            (salonData.statut === 'nuit_voyante'   && me.role === 'voyante'   && !me.a_vote) ||
-            (salonData.statut === 'nuit_loups'     && isMeLoup                && !me.a_vote) ||
-            (salonData.statut === 'nuit_sorciere'  && me.role === 'sorciere'  && !me.a_vote_sorciere);
+            (salonData.statut === 'nuit_cupidon'    && me.role === 'cupidon'    && !me.pouvoir_utilise) ||
+            (salonData.statut === 'nuit_voleur'     && me.role === 'voleur'     && !me.a_vote) ||
+            (salonData.statut === 'nuit_salvateur'  && me.role === 'salvateur'  && !me.a_vote) ||
+            (salonData.statut === 'nuit_voyante'    && me.role === 'voyante'    && !me.a_vote) ||
+            (salonData.statut === 'nuit_loups'      && isMeLoup                 && !me.a_vote) ||
+            (salonData.statut === 'nuit_loup_blanc' && me.role === 'loup-blanc' && !me.a_vote) ||
+            (salonData.statut === 'nuit_sorciere'   && me.role === 'sorciere'   && !me.a_vote_sorciere);
 
           return (
             <div
@@ -1749,6 +1811,28 @@ export default function PlayerScreen() {
               <h3 className="title-font text-danger" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem', marginBottom: '0.6rem' }}>
                 <PawPrint size={20} /> Chasse de la Meute
               </h3>
+
+              {/* Rappel des loups de la meute */}
+              <div style={{ marginBottom: '12px', padding: '8px 10px', background: 'rgba(0,0,0,0.25)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.25)' }}>
+                <span className="text-font" style={{ fontSize: '0.82rem', color: '#fca5a5', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <PawPrint size={14} /> Membres de la meute cette nuit :
+                </span>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+                  <span style={{ fontSize: '0.78rem', background: '#ef4444', color: '#fff', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                    {me.nom} (Vous)
+                  </span>
+                  {compagnonsLoupsVivants.map(c => (
+                    <span key={c.id} style={{ fontSize: '0.78rem', background: 'rgba(239,68,68,0.2)', color: '#fca5a5', padding: '2px 8px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.35)' }}>
+                      {c.nom} {c.role === 'loup-blanc' ? '(Loup Blanc)' : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-font" style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0 0 8px' }}>
+                Désignez la victime du village à dévorer :
+              </p>
+
               <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
                 {loupTargets.map(j => {
                   const isSel = salonData.vote_loup_temporaire === j.nom;
@@ -1861,6 +1945,147 @@ export default function PlayerScreen() {
               senderName={me.nom}
               isReadOnly={false}
             />
+          )}
+
+          {/* LOUP-GAROU BLANC : ACTION SECRÈTE APRÈS LA MEUTE */}
+          {salonData.statut === 'nuit_loup_blanc' && me.role === 'loup-blanc' && (
+            <div style={{ padding: '1.15rem', background: 'rgba(241,245,249,0.08)', border: '1.5px solid #cbd5e1', borderRadius: '12px', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.6rem' }}>
+                <Moon size={22} style={{ color: '#f1f5f9' }} />
+                <h3 className="title-font" style={{ color: '#f1f5f9', fontSize: '1.15rem', margin: 0 }}>
+                  Réveil Secret du Loup-Garou Blanc
+                </h3>
+              </div>
+
+              <p className="text-font" style={{ fontSize: '0.86rem', color: '#cbd5e1', marginBottom: '1rem', lineHeight: 1.4 }}>
+                La meute s'est rendormie. C'est votre moment d'agir seul dans l'ombre. Pour gagner la partie seul, vous pouvez assassiner un autre loup cette nuit, ou épargner la meute pour le moment.
+              </p>
+
+              {me.a_vote ? (
+                <div style={{ padding: '12px', background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', borderRadius: '8px', textAlign: 'center' }}>
+                  <p className="text-font" style={{ color: '#10b981', fontWeight: 700, margin: '0 0 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <CheckCircle2 size={18} /> Action secrète validée !
+                  </p>
+                  <p className="text-font" style={{ fontSize: '0.84rem', margin: 0, color: 'var(--text-color)' }}>
+                    {salonData.victime_loup_blanc
+                      ? `Vous avez choisi d'éliminer ${salonData.victime_loup_blanc} en secret.`
+                      : 'Vous avez choisi d\'épargner vos compères cette nuit.'}
+                  </p>
+                </div>
+              ) : compagnonsLoupsVivants.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '10px' }}>
+                  <p className="text-font text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>
+                    Tous les autres loups sont déjà éliminés ! Vous êtes l'unique prédateur restant.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
+                          a_vote: true,
+                          a_vote_loup_blanc: true,
+                        });
+                      } catch (e) { console.error(e); }
+                    }}
+                    className="btn-primary title-font"
+                    style={{ background: '#475569', width: '100%' }}
+                  >
+                    Continuer la nuit
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-font" style={{ fontSize: '0.86rem', fontWeight: 600, color: '#fca5a5', marginBottom: '8px' }}>
+                    Choisissez un membre de la meute à dévorer :
+                  </p>
+
+                  <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '220px', overflowY: 'auto', marginBottom: '1rem' }}>
+                    {compagnonsLoupsVivants.map(j => {
+                      const isSel = cibleLoupBlanc === j.nom;
+                      const rObj = getRole(j.role);
+                      return (
+                        <li
+                          key={j.id}
+                          onClick={() => setCibleLoupBlanc(j.nom)}
+                          style={{
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            background: isSel ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.05)',
+                            color: isSel ? '#fca5a5' : 'var(--text-color)',
+                            border: isSel ? '1.5px solid #ef4444' : '1px solid var(--card-border)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            fontWeight: isSel ? 700 : 500,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <PawPrint size={16} style={{ color: '#ef4444' }} />
+                            <span>{j.nom}</span>
+                          </div>
+                          {rObj && (
+                            <RoleChip
+                              roleObj={rObj}
+                              onSelectRole={r => setInspectRole(r)}
+                              suffix={j.est_infecte ? '(Infecté)' : undefined}
+                            />
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <button
+                      type="button"
+                      disabled={!cibleLoupBlanc}
+                      onClick={async () => {
+                        if (!cibleLoupBlanc) return;
+                        try {
+                          await runTransaction(db, async transaction => {
+                            transaction.update(doc(db, 'salons', roomId), {
+                              victime_loup_blanc: cibleLoupBlanc,
+                              notifications_mj: arrayUnion(`Le Loup Blanc a frappé un loup en secret cette nuit.`),
+                            });
+                            transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), {
+                              a_vote: true,
+                              a_vote_loup_blanc: true,
+                            });
+                          });
+                        } catch (e) { console.error(e); }
+                      }}
+                      className="btn-primary title-font glow-button"
+                      style={{ background: '#ef4444', width: '100%', opacity: !cibleLoupBlanc ? 0.5 : 1 }}
+                    >
+                      <Skull size={18} /> Égorger {cibleLoupBlanc || 'la cible'} en secret
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await runTransaction(db, async transaction => {
+                            transaction.update(doc(db, 'salons', roomId), {
+                              victime_loup_blanc: null,
+                              notifications_mj: arrayUnion(`Le Loup Blanc a décidé d'épargner la meute cette nuit.`),
+                            });
+                            transaction.update(doc(db, 'salons', roomId, 'joueurs', me.id), {
+                              a_vote: true,
+                              a_vote_loup_blanc: true,
+                            });
+                          });
+                        } catch (e) { console.error(e); }
+                      }}
+                      className="btn-secondary text-font"
+                      style={{ width: '100%', borderColor: '#64748b', color: '#94a3b8' }}
+                    >
+                      Épargner la meute cette nuit (Passer)
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* SORCIÈRE */}

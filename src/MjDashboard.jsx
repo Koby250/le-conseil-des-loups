@@ -21,7 +21,7 @@ import {
 } from './GameChats';
 import AiTestPanel from './AiTestPanel';
 import { isBot } from './aiBotEngine';
-import { useAutoMj } from './autoMjEngine';
+import { useAutoMj, checkGameEnd } from './autoMjEngine';
 import {
   Users, RefreshCw, Eye, Settings, Play,
   Link as LinkIcon, Info, ChevronRight, Bell,
@@ -50,6 +50,8 @@ function computeNightPhases(joueurs) {
     phases.push('nuit_voyante');
   if (alive.some(j => isWolf(j)))
     phases.push('nuit_loups');
+  if (alive.some(j => j.role === 'loup-blanc'))
+    phases.push('nuit_loup_blanc');
   if (alive.some(j => j.role === 'sorciere'))
     phases.push('nuit_sorciere');
   if (alive.some(j => j.role === 'voleur' && !j.pouvoir_utilise))
@@ -69,12 +71,13 @@ function getNextNightPhase(currentPhase, joueurs) {
 }
 
 const PHASE_BADGE_META = {
-  nuit_cupidon:   { label: 'Cupidon',       roleId: 'cupidon' },
-  nuit_voleur:    { label: 'Voleur',        roleId: 'voleur' },
-  nuit_salvateur: { label: 'Salvateur',     roleId: 'salvateur' },
-  nuit_voyante:   { label: 'Voyante',       roleId: 'voyante' },
-  nuit_loups:     { label: 'Loups-Garous',  roleId: 'loup-garou' },
-  nuit_sorciere:  { label: 'Sorcière',      roleId: 'sorciere' },
+  nuit_cupidon:    { label: 'Cupidon',       roleId: 'cupidon' },
+  nuit_voleur:     { label: 'Voleur',        roleId: 'voleur' },
+  nuit_salvateur:  { label: 'Salvateur',     roleId: 'salvateur' },
+  nuit_voyante:    { label: 'Voyante',       roleId: 'voyante' },
+  nuit_loups:      { label: 'Loups-Garous',  roleId: 'loup-garou' },
+  nuit_loup_blanc: { label: 'Loup Blanc',    roleId: 'loup-blanc' },
+  nuit_sorciere:   { label: 'Sorcière',      roleId: 'sorciere' },
 };
 
 /**
@@ -353,19 +356,12 @@ export default function MjDashboard() {
   // ── Vérification des conditions de victoire ───────────────────────────────
   useEffect(() => {
     if (!salonData || !joueurs.length) return;
-    const nonPlayStates = ['SETUP', 'en_attente', 'fin_village', 'fin_loups', 'fin_ange'];
+    const nonPlayStates = ['SETUP', 'en_attente', 'fin_village', 'fin_loups', 'fin_ange', 'fin_loup_blanc'];
     if (nonPlayStates.includes(salonData.statut)) return;
 
-    const alivePlayers = joueurs.filter(j => j.statut_joueur !== 'mort');
-    if (alivePlayers.length === 0) return;
-
-    const totalLoups = alivePlayers.filter(j => isWolf(j)).length;
-    const totalVillageois = alivePlayers.length - totalLoups;
-
-    if (totalLoups === 0) {
-      updateDoc(doc(db, 'salons', roomId), { statut: 'fin_village' }).catch(console.error);
-    } else if (totalLoups >= totalVillageois) {
-      updateDoc(doc(db, 'salons', roomId), { statut: 'fin_loups' }).catch(console.error);
+    const gameEnd = checkGameEnd(joueurs);
+    if (gameEnd) {
+      updateDoc(doc(db, 'salons', roomId), { statut: gameEnd }).catch(console.error);
     }
   }, [joueurs, salonData?.statut, roomId]);
 
@@ -426,6 +422,7 @@ export default function MjDashboard() {
         victime_loups_visible_sorciere: null,
         victime_sauvee: false,
         victime_sorciere: null,
+        victime_loup_blanc: null,
         vote_loup_temporaire: null,
         joueur_protege: null,
         derniere_cible_salvateur: null,
@@ -612,6 +609,16 @@ export default function MjDashboard() {
         (isProtected || isAncienFirstLife || isInfection) ? null : salonData.victime_loups;
     }
 
+    if (next === 'nuit_loup_blanc') {
+      const loupBlancDoc = joueurs.find(j => j.role === 'loup-blanc' && j.statut_joueur !== 'mort');
+      if (loupBlancDoc) {
+        updateDoc(doc(db, 'salons', roomId, 'joueurs', loupBlancDoc.id), {
+          a_vote: false,
+          a_vote_loup_blanc: false,
+        }).catch(console.error);
+      }
+    }
+
     try {
       await updateDoc(doc(db, 'salons', roomId), updates);
     } catch (e) { console.error(e); }
@@ -624,9 +631,10 @@ export default function MjDashboard() {
   const handleApplyNightDeaths = async () => {
     try {
       await runTransaction(db, async transaction => {
-        let diedFromLoups    = false;
-        let diedFromSorciere = false;
-        let notifMj          = null;
+        let diedFromLoups     = false;
+        let diedFromSorciere  = false;
+        let diedFromLoupBlanc = false;
+        let notifMj           = null;
         const newNotifications = [];
         const deadPlayerIds = new Set();
 
@@ -740,6 +748,21 @@ export default function MjDashboard() {
           }
         }
 
+        // ── 2b. Victime secrète du Loup-Garou Blanc ───────────────────────
+        if (salonData.victime_loup_blanc) {
+          const lbVictimDoc = joueurs.find(j => j.nom === salonData.victime_loup_blanc && j.statut_joueur !== 'mort' && !deadPlayerIds.has(j.id));
+          if (lbVictimDoc) {
+            const isProtected = lbVictimDoc.nom === salonData.joueur_protege;
+            if (isProtected) {
+              newNotifications.push(`La cible secrète du Loup Blanc (${lbVictimDoc.nom}) a été protégée par le Salvateur.`);
+            } else {
+              transaction.update(doc(db, 'salons', roomId, 'joueurs', lbVictimDoc.id), { statut_joueur: 'mort' });
+              deadPlayerIds.add(lbVictimDoc.id);
+              diedFromLoupBlanc = true;
+            }
+          }
+        }
+
         // ── 3. Cascade Amoureux (Cupidon) ─────────────────────────────────
         let chagrinNom = null;
         if (Array.isArray(salonData.couple) && salonData.couple.length === 2) {
@@ -784,6 +807,10 @@ export default function MjDashboard() {
           const p = joueurs.find(j => j.nom === salonData.victime_loups);
           if (p) mortsNuitDetails.push({ id: p.id, nom: p.nom, role: p.role, raison: 'Dévoré par les Loups-Garous', est_infecte: !!p.est_infecte });
         }
+        if (diedFromLoupBlanc && salonData.victime_loup_blanc) {
+          const p = joueurs.find(j => j.nom === salonData.victime_loup_blanc);
+          if (p) mortsNuitDetails.push({ id: p.id, nom: p.nom, role: p.role, raison: 'Égorgé en secret par le Loup-Garou Blanc', est_infecte: !!p.est_infecte });
+        }
         if (diedFromSorciere && salonData.victime_sorciere) {
           const p = joueurs.find(j => j.nom === salonData.victime_sorciere);
           if (p) mortsNuitDetails.push({ id: p.id, nom: p.nom, role: p.role, raison: 'Empoisonné par la Sorcière', est_infecte: !!p.est_infecte });
@@ -800,10 +827,11 @@ export default function MjDashboard() {
         const salonUpdates = {
           statut: 'jour_accusation',
           morts_nuit: {
-            loups:    diedFromLoups    ? salonData.victime_loups    : null,
-            sorciere: diedFromSorciere ? salonData.victime_sorciere : null,
-            venin:    salonData.morts_nuit?.venin || null,
-            chagrin:  chagrinNom,
+            loups:      diedFromLoups      ? salonData.victime_loups      : null,
+            sorciere:   diedFromSorciere   ? salonData.victime_sorciere   : null,
+            loup_blanc: diedFromLoupBlanc  ? salonData.victime_loup_blanc : null,
+            venin:      salonData.morts_nuit?.venin || null,
+            chagrin:    chagrinNom,
           },
           morts_nuit_details: mortsNuitDetails,
           infection_active: false,
@@ -1203,6 +1231,7 @@ export default function MjDashboard() {
         victime_loups_visible_sorciere: null,
         victime_sauvee: false,
         victime_sorciere: null,
+        victime_loup_blanc: null,
         vote_loup_temporaire: null,
         joueur_protege: null,
         cible_corbeau: null,
@@ -1232,6 +1261,7 @@ export default function MjDashboard() {
         batch.update(doc(db, 'salons', roomId, 'joueurs', j.id), {
           a_vote: false,
           a_vote_sorciere: false,
+          a_vote_loup_blanc: false,
           vote_jour: null,
           infection_repondu: false,
         });
@@ -1260,6 +1290,7 @@ export default function MjDashboard() {
         victime_loups_visible_sorciere: null,
         victime_sauvee: false,
         victime_sorciere: null,
+        victime_loup_blanc: null,
         vote_loup_temporaire: null,
         joueur_protege: null,
         derniere_cible_salvateur: null,
@@ -2017,6 +2048,43 @@ export default function MjDashboard() {
           </div>
         )}
 
+        {/* NUIT LOUP BLANC */}
+        {isPhase('nuit_loup_blanc') && (() => {
+          const loupBlanc = joueurs.find(j => j.role === 'loup-blanc' && j.statut_joueur !== 'mort');
+          return (
+            <div>
+              <p className="text-font" style={{ color: '#e2e8f0', fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Moon size={20} /> Tour du Loup-Garou Blanc — Réveil solitaire et trahison de la meute.
+              </p>
+              {!loupBlanc ? (
+                <p className="text-font text-muted" style={{ fontStyle: 'italic', margin: '1rem 0' }}>
+                  Aucun Loup-Garou Blanc en vie.
+                </p>
+              ) : (
+                <div style={{ background: 'rgba(255,255,255,0.06)', padding: '1rem', borderRadius: '10px', margin: '1rem 0', border: '1px solid rgba(255,255,255,0.15)' }}>
+                  <p className="text-font" style={{ margin: '0 0 6px' }}>
+                    Loup Blanc actif : <strong style={{ color: '#f8fafc' }}>{loupBlanc.nom}</strong>
+                  </p>
+                  <p className="text-font" style={{ margin: '0 0 6px' }}>
+                    Cible choisie parmi les loups : <strong style={{ color: salonData.victime_loup_blanc ? '#ef4444' : '#94a3b8' }}>{salonData.victime_loup_blanc || 'Aucune (épargne la meute)'}</strong>
+                  </p>
+                  <p className="text-font" style={{ margin: 0, fontWeight: 'bold', color: loupBlanc.a_vote ? '#10b981' : '#f59e0b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {loupBlanc.a_vote ? <CheckCircle2 size={16} /> : <Hourglass size={16} />}
+                    {loupBlanc.a_vote ? 'Le Loup Blanc a validé son action secrète' : 'Le Loup Blanc est en train de choisir...'}
+                  </p>
+                </div>
+              )}
+              <button
+                onClick={handleNextPhase}
+                className="btn-primary title-font glow-button"
+                style={{ background: '#475569' }}
+              >
+                Séquence Suivante <ChevronRight size={20} />
+              </button>
+            </div>
+          );
+        })()}
+
         {/* NUIT SORCIÈRE */}
         {isPhase('nuit_sorciere') && (() => {
           const sorciere = joueurs.find(j => j.role === 'sorciere' && j.statut_joueur !== 'mort');
@@ -2393,24 +2461,28 @@ export default function MjDashboard() {
         )}
 
         {/* FIN DE PARTIE */}
-        {(isPhase('fin_village') || isPhase('fin_loups') || isPhase('fin_ange')) && (
+        {(isPhase('fin_village') || isPhase('fin_loups') || isPhase('fin_ange') || isPhase('fin_loup_blanc')) && (
           <div style={{ textAlign: 'center', padding: '2rem 0' }}>
-            <div style={{ display: 'inline-flex', padding: '1rem', borderRadius: '50%', background: isPhase('fin_village') ? 'rgba(16,185,129,0.15)' : isPhase('fin_ange') ? 'rgba(251,191,36,0.15)' : 'rgba(239,68,68,0.15)', marginBottom: '1rem' }}>
-              <Trophy size={44} style={{ color: isPhase('fin_village') ? '#10b981' : isPhase('fin_ange') ? '#fbbf24' : '#ef4444' }} />
+            <div style={{ display: 'inline-flex', padding: '1rem', borderRadius: '50%', background: isPhase('fin_village') ? 'rgba(16,185,129,0.15)' : isPhase('fin_ange') ? 'rgba(251,191,36,0.15)' : isPhase('fin_loup_blanc') ? 'rgba(241,245,249,0.15)' : 'rgba(239,68,68,0.15)', marginBottom: '1rem' }}>
+              <Trophy size={44} style={{ color: isPhase('fin_village') ? '#10b981' : isPhase('fin_ange') ? '#fbbf24' : isPhase('fin_loup_blanc') ? '#f1f5f9' : '#ef4444' }} />
             </div>
-            <h1 className="title-font glow-text" style={{ fontSize: 'clamp(1.6rem, 4vw, 2.4rem)', margin: '0 0 0.75rem', color: isPhase('fin_village') ? '#10b981' : isPhase('fin_ange') ? '#fbbf24' : '#ef4444' }}>
+            <h1 className="title-font glow-text" style={{ fontSize: 'clamp(1.6rem, 4vw, 2.4rem)', margin: '0 0 0.75rem', color: isPhase('fin_village') ? '#10b981' : isPhase('fin_ange') ? '#fbbf24' : isPhase('fin_loup_blanc') ? '#f1f5f9' : '#ef4444' }}>
               {isPhase('fin_village')
                 ? 'VICTOIRE DU VILLAGE !'
                 : isPhase('fin_ange')
                   ? "VICTOIRE SOLITAIRE DE L'ANGE !"
-                  : 'VICTOIRE DES LOUPS-GAROUS !'}
+                  : isPhase('fin_loup_blanc')
+                    ? 'VICTOIRE DU LOUP-GAROU BLANC !'
+                    : 'VICTOIRE DES LOUPS-GAROUS !'}
             </h1>
             <p className="text-font" style={{ fontSize: '1.1rem', color: 'var(--text-color)' }}>
               {isPhase('fin_village')
                 ? 'Tous les Loups-Garous ont été démasqués et éliminés !'
                 : isPhase('fin_ange')
                   ? "L'Ange a réussi à se faire condamner lors du tout premier vote du village !"
-                  : 'La meute a pris le contrôle du village !'}
+                  : isPhase('fin_loup_blanc')
+                    ? 'Le Loup-Garou Blanc a éliminé la meute et le village : il est l’unique survivant !'
+                    : 'La meute a pris le contrôle du village !'}
             </p>
           </div>
         )}

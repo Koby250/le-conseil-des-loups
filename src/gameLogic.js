@@ -32,6 +32,7 @@ export const ALL_NIGHT_PHASES = [
   'nuit_salvateur',
   'nuit_voyante',
   'nuit_loups',
+  'nuit_loup_blanc',
   'nuit_sorciere',
   'nuit_voleur',
 ];
@@ -46,6 +47,7 @@ export const PHASE_META = {
   nuit_salvateur:  { label: 'Salvateur',          kind: 'night', roleId: 'salvateur', text: 'Le Salvateur veille sur le village…' },
   nuit_voyante:    { label: 'Voyante',            kind: 'night', roleId: 'voyante',   text: 'La Voyante consulte les astres…' },
   nuit_loups:      { label: 'Loups-Garous',       kind: 'night', roleId: 'loup-garou', text: 'La meute choisit sa proie…' },
+  nuit_loup_blanc: { label: 'Loup Blanc',         kind: 'night', roleId: 'loup-blanc', text: 'Le Loup Blanc se réveille en secret…' },
   nuit_sorciere:   { label: 'Sorcière',           kind: 'night', roleId: 'sorciere',  text: 'La Sorcière prépare ses potions…' },
   nuit_voleur:     { label: 'Voleur',             kind: 'night', roleId: 'voleur',    text: 'Le Voleur rôde en silence…' },
   matin:           { label: 'Lever du jour',      kind: 'day' },
@@ -55,6 +57,7 @@ export const PHASE_META = {
   jour_resolution: { label: 'Sentence',           kind: 'day' },
   fin_village:     { label: 'Victoire du village', kind: 'end' },
   fin_loups:       { label: 'Victoire des loups', kind: 'end' },
+  fin_loup_blanc:  { label: 'Victoire du Loup Blanc', kind: 'end' },
 };
 
 export const phaseLabel = statut => PHASE_META[statut]?.label || String(statut || '').replace(/_/g, ' ');
@@ -87,6 +90,7 @@ const NOTIF_RULES = [
   [/bouc/i, 'bouc-emissaire'],
   [/illusion/i, 'illusionniste'],
   [/com[ée]dien/i, 'comedien'],
+  [/loup-blanc|loup blanc/i, 'loup-blanc'],
   [/loup|meute/i, 'loup-garou'],
 ];
 

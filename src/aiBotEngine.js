@@ -523,7 +523,48 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
     }
   }
 
-  // F. Nuit : Sorcière (décision humaine de 6 à 12s)
+  // F. Nuit : Loup-Garou Blanc (trahison secrète de la meute, hésitation de 6 à 12s)
+  if (statut === 'nuit_loup_blanc') {
+    const loupBlancBot = aliveBots.find(j => j.role === 'loup-blanc' && !j.a_vote);
+    if (loupBlancBot) {
+      const plannedDelay = getBotActionDelay(loupBlancBot.nom, 'loup_blanc', dayNumber, 6, 12);
+      if (elapsedSec >= plannedDelay) {
+        // Cibles potentielles : les autres loups vivants !
+        const otherWolves = alivePlayers.filter(j => isWolf(j) && j.id !== loupBlancBot.id);
+        let victimName = null;
+        if (otherWolves.length > 0) {
+          // Décision : 85% de chance d'éliminer un autre loup, 15% d'attendre
+          const willKill = Math.random() < 0.85;
+          if (willKill) {
+            victimName = otherWolves[Math.floor(Math.random() * otherWolves.length)].nom;
+          }
+        }
+        try {
+          await runTransaction(db, async transaction => {
+            transaction.update(doc(db, 'salons', roomId), {
+              victime_loup_blanc: victimName || null,
+              notifications_mj: arrayUnion(
+                victimName
+                  ? `Le Loup Blanc IA (${loupBlancBot.nom}) a frappé un loup en secret.`
+                  : `Le Loup Blanc IA (${loupBlancBot.nom}) a épargné la meute cette nuit.`
+              ),
+            });
+            transaction.update(doc(db, 'salons', roomId, 'joueurs', loupBlancBot.id), {
+              a_vote: true,
+              a_vote_loup_blanc: true,
+            });
+          });
+          return victimName
+            ? `Le Loup Blanc IA (${loupBlancBot.nom}) a pris pour cible ${victimName}.`
+            : `Le Loup Blanc IA (${loupBlancBot.nom}) n'attaque pas cette nuit.`;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+  }
+
+  // G. Nuit : Sorcière (décision humaine de 6 à 12s)
   if (statut === 'nuit_sorciere') {
     const sorciereBot = aliveBots.find(j => j.role === 'sorciere' && !j.a_vote_sorciere);
     if (sorciereBot) {

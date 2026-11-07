@@ -22,6 +22,8 @@ export function computeNightPhasesAuto(joueurs = []) {
     phases.push('nuit_voyante');
   if (alive.some(j => isWolf(j)))
     phases.push('nuit_loups');
+  if (alive.some(j => j.role === 'loup-blanc'))
+    phases.push('nuit_loup_blanc');
   if (alive.some(j => j.role === 'sorciere' && (!j.potion_vie_utilisee || !j.potion_mort_utilisee)))
     phases.push('nuit_sorciere');
   if (alive.some(j => j.role === 'voleur' && !j.a_vote))
@@ -45,7 +47,7 @@ export function getNextNightPhaseAuto(currentPhase, joueurs = []) {
 }
 
 /**
- * Vérifie si la partie est terminée (victoire village ou victoire loups).
+ * Vérifie si la partie est terminée (victoire village, loups ou Loup Blanc solitaire).
  */
 export function checkGameEnd(joueurs = []) {
   const alive = joueurs.filter(j => j.statut_joueur !== 'mort');
@@ -53,8 +55,31 @@ export function checkGameEnd(joueurs = []) {
 
   const wolves = alive.filter(j => isWolf(j));
   const nonWolves = alive.filter(j => !isWolf(j));
+  const loupBlancAlive = alive.find(j => j.role === 'loup-blanc');
 
+  // Si tous les loups (y compris le Loup Blanc) sont éliminés : victoire du village
   if (wolves.length === 0) return 'fin_village';
+
+  // Si le Loup-Garou Blanc est encore en vie :
+  if (loupBlancAlive) {
+    // Victoire solitaire du Loup Blanc s'il est le SEUL joueur vivant de la partie
+    if (alive.length === 1) return 'fin_loup_blanc';
+
+    // S'il ne reste plus aucun villageois et que le Loup Blanc est le seul loup restant
+    if (nonWolves.length === 0 && wolves.length === 1) return 'fin_loup_blanc';
+
+    // S'il reste le Loup Blanc et d'autres loups en vie :
+    // La partie ne se termine PAS en fin_loups car le Loup Blanc doit éliminer les autres loups !
+    if (wolves.length > 1) {
+      return null;
+    }
+
+    // Si le Loup Blanc est le seul loup restant mais qu'il y a des villageois :
+    // Le jeu continue jusqu'à élimination complète.
+    return null;
+  }
+
+  // En l'absence de Loup Blanc en vie : victoire classique de la meute
   if (wolves.length >= nonWolves.length) return 'fin_loups';
 
   return null;
@@ -139,6 +164,17 @@ export async function executeNextNightPhaseAuto(roomId, salonData, joueurs = [])
       (isProtected || isAncienFirstLife || isInfection) ? null : salonData.victime_loups;
   }
 
+  // Si on passe au tour du Loup Blanc, réinitialiser son état de vote pour son action secrète
+  if (next === 'nuit_loup_blanc') {
+    const loupBlancDoc = joueurs.find(j => j.role === 'loup-blanc' && j.statut_joueur !== 'mort');
+    if (loupBlancDoc) {
+      updateDoc(doc(db, 'salons', roomId, 'joueurs', loupBlancDoc.id), {
+        a_vote: false,
+        a_vote_loup_blanc: false,
+      }).catch(console.error);
+    }
+  }
+
   await updateDoc(doc(db, 'salons', roomId), updates);
   return `Phase de nuit passée à ${next}.`;
 }
@@ -149,9 +185,10 @@ export async function executeNextNightPhaseAuto(roomId, salonData, joueurs = [])
 export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = [], targetStatut = 'matin') {
   try {
     await runTransaction(db, async transaction => {
-      let diedFromLoups    = false;
-      let diedFromSorciere = false;
-      let notifMj          = null;
+      let diedFromLoups     = false;
+      let diedFromSorciere  = false;
+      let diedFromLoupBlanc = false;
+      let notifMj           = null;
       const newNotifications = [];
       const deadPlayerIds = new Set();
 
@@ -223,6 +260,21 @@ export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = [
         }
       }
 
+      // 2b. Victime secrète du Loup-Garou Blanc
+      if (salonData.victime_loup_blanc) {
+        const lbVictimDoc = joueurs.find(j => j.nom === salonData.victime_loup_blanc && j.statut_joueur !== 'mort' && !deadPlayerIds.has(j.id));
+        if (lbVictimDoc) {
+          const isProtected = lbVictimDoc.nom === salonData.joueur_protege;
+          if (isProtected) {
+            newNotifications.push(`La cible secrète du Loup Blanc (${lbVictimDoc.nom}) a été protégée par le Salvateur.`);
+          } else {
+            transaction.update(doc(db, 'salons', roomId, 'joueurs', lbVictimDoc.id), { statut_joueur: 'mort' });
+            deadPlayerIds.add(lbVictimDoc.id);
+            diedFromLoupBlanc = true;
+          }
+        }
+      }
+
       // 3. Cascade Amoureux
       let chagrinNom = null;
       if (Array.isArray(salonData.couple) && salonData.couple.length === 2) {
@@ -267,6 +319,10 @@ export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = [
         const p = joueurs.find(j => j.nom === salonData.victime_loups);
         if (p) mortsDetails.push({ id: p.id, nom: p.nom, role: p.role, raison: 'Dévoré par les Loups-Garous', est_infecte: !!p.est_infecte });
       }
+      if (diedFromLoupBlanc && salonData.victime_loup_blanc) {
+        const p = joueurs.find(j => j.nom === salonData.victime_loup_blanc);
+        if (p) mortsDetails.push({ id: p.id, nom: p.nom, role: p.role, raison: 'Égorgé en secret par le Loup-Garou Blanc', est_infecte: !!p.est_infecte });
+      }
       if (diedFromSorciere && salonData.victime_sorciere) {
         const p = joueurs.find(j => j.nom === salonData.victime_sorciere);
         if (p) mortsDetails.push({ id: p.id, nom: p.nom, role: p.role, raison: 'Empoisonné par la Sorcière', est_infecte: !!p.est_infecte });
@@ -287,10 +343,11 @@ export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = [
       const salonUpdates = {
         statut: gameEnd || targetStatut || 'matin',
         morts_nuit: {
-          loups:    diedFromLoups    ? salonData.victime_loups    : null,
-          sorciere: diedFromSorciere ? salonData.victime_sorciere : null,
-          venin:    salonData.morts_nuit?.venin || null,
-          chagrin:  chagrinNom,
+          loups:      diedFromLoups      ? salonData.victime_loups      : null,
+          sorciere:   diedFromSorciere   ? salonData.victime_sorciere   : null,
+          loup_blanc: diedFromLoupBlanc  ? salonData.victime_loup_blanc : null,
+          venin:      salonData.morts_nuit?.venin || null,
+          chagrin:    chagrinNom,
         },
         morts_nuit_details: mortsDetails,
         infection_active: false,
@@ -678,6 +735,7 @@ export async function executeNextNightAuto(roomId, salonData, joueurs = []) {
       victime_loups_visible_sorciere: null,
       victime_sauvee: false,
       victime_sorciere: null,
+      victime_loup_blanc: null,
       vote_loup_temporaire: null,
       joueur_protege: null,
       cible_corbeau: null,
@@ -709,6 +767,7 @@ export async function executeNextNightAuto(roomId, salonData, joueurs = []) {
       batch.update(doc(db, 'salons', roomId, 'joueurs', j.id), {
         a_vote: false,
         a_vote_sorciere: false,
+        a_vote_loup_blanc: false,
         vote_jour: null,
         infection_repondu: false,
       });
@@ -805,6 +864,16 @@ export async function runAutoMjStep(roomId, salonData, joueurs = []) {
     const allWolvesVoted = wolves.length > 0 && wolves.every(w => w.a_vote);
     const wolvesDone = wolves.length === 0 || (targetChosen && allWolvesVoted);
     if ((wolvesDone && elapsedSec >= minSec) || elapsedSec >= maxSec) {
+      return await executeNextNightPhaseAuto(roomId, salonData, joueurs);
+    }
+  }
+
+  if (statut === 'nuit_loup_blanc') {
+    const minSec = Math.max(14, baseNightSec - 2);
+    const maxSec = minSec + 25;
+    const loupBlancs = alivePlayers.filter(j => j.role === 'loup-blanc');
+    const loupBlancDone = loupBlancs.length === 0 || loupBlancs.every(lb => lb.a_vote);
+    if ((loupBlancDone && elapsedSec >= minSec) || elapsedSec >= maxSec) {
       return await executeNextNightPhaseAuto(roomId, salonData, joueurs);
     }
   }
