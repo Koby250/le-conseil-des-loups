@@ -209,6 +209,17 @@ const WOLF_CHAT_MESSAGES = [
   "La meute a faim. {target} sera notre proie !",
 ];
 
+const BOT_ACCUSATION_ARGUMENTS = [
+  "Je trouve l'attitude de {target} particulièrement trouble depuis ce matin. Ses réactions ne sont pas naturelles !",
+  "Moi je propose d'accuser {target}. Il faut qu'il vienne s'expliquer devant tout le village !",
+  "Regardez comment {target} évite les débats... Pour moi, c'est un suspect évident.",
+  "Mon accusation ira sur {target}. Je compte sur les autres villageois pour m'aider à l'envoyer au tribunal !",
+  "Il y a de fortes chances que {target} cache sa véritable allégeance. Mettons-le sur le banc des accusés !",
+  "Les loups avancent masqués, et {target} joue un jeu très étrange aujourd'hui.",
+  "Attention villageois, ne votons pas n'importe comment ! Il nous faut des éléments tangibles avant d'accuser.",
+  "Restons calmes et prudents, nous risquons d'accuser un innocent si nous nous précipitons sans réfléchir.",
+];
+
 const ACCUSED_DEFENSE_MESSAGES = [
   "Je vous jure que je suis un simple villageois innocent ! Vous faites une énorme erreur !",
   "Ne votez pas contre moi ! Je me bats du côté du village depuis le début !",
@@ -716,6 +727,9 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
 
     if (botsReadyToAccuse.length > 0) {
       const newVotesUpdates = {};
+      const messagesAcc = Array.isArray(salonData.chat_accusation) ? salonData.chat_accusation : [];
+      let newChatMsg = null;
+
       for (const bot of botsReadyToAccuse) {
         const otherAlive = allAlive.filter(j => j.nom !== bot.nom);
         if (otherAlive.length > 0) {
@@ -726,8 +740,29 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
           } else {
             const target = otherAlive[Math.floor((seed / 100) * otherAlive.length) % otherAlive.length].nom;
             newVotesUpdates[`votes.${bot.nom}`] = target;
+
+            // Dépose un argument persuasif dans le chat d'accusations (limité à 3 messages bots pour garder le chat lisible)
+            if (!newChatMsg && messagesAcc.filter(m => m.id?.startsWith('bot_acc_')).length < 3) {
+              const alreadySpoke = messagesAcc.some(m => m.auteur === bot.nom);
+              if (!alreadySpoke) {
+                const template = BOT_ACCUSATION_ARGUMENTS[Math.floor(Math.random() * (BOT_ACCUSATION_ARGUMENTS.length - 2))];
+                const text = template.replace('{target}', target);
+                newChatMsg = {
+                  id: 'bot_acc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                  auteur: bot.nom,
+                  roleBadge: 'HABITANT',
+                  texte: text,
+                  heure: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  timestamp: Date.now(),
+                };
+              }
+            }
           }
         }
+      }
+      if (newChatMsg) {
+        newVotesUpdates.chat_accusation = arrayUnion(newChatMsg);
+        actionsSummary.push(`Le Bot ${newChatMsg.auteur} a partagé son réquisitoire dans le chat d'accusations.`);
       }
       if (Object.keys(newVotesUpdates).length > 0) {
         await updateDoc(doc(db, 'salons', roomId), newVotesUpdates);

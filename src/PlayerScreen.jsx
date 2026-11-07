@@ -14,6 +14,7 @@ import {
 } from './RoleComponents';
 import {
   WolfPackChat,
+  AccusationsChat,
   AccusedDefenseChat,
   PlayerMjNotificationAndInbox,
   RoleChangeProposalModal,
@@ -25,7 +26,7 @@ import {
   Crosshair, Skull, Sparkles, Ghost, Trophy, BookOpen,
   CheckCircle2, Ban, Hourglass, Sun, Moon, VenetianMask,
   Info, Users, Dog, TreePine, Bird, ScanSearch, Drama, Gavel,
-  CheckSquare, Square, Megaphone,
+  CheckSquare, Square, Megaphone, ChevronRight,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
@@ -1212,6 +1213,18 @@ export default function PlayerScreen() {
                 salonData={salonData}
                 senderName={me.nom}
                 isReadOnly={true}
+              />
+            </div>
+          )}
+
+          {/* Chat des accusations en lecture seule pour les fantômes */}
+          {salonData.statut === 'jour_accusation' && (
+            <div style={{ marginBottom: '1rem' }}>
+              <AccusationsChat
+                roomId={roomId}
+                salonData={salonData}
+                senderName={me.nom}
+                isDead={true}
               />
             </div>
           )}
@@ -2521,6 +2534,125 @@ export default function PlayerScreen() {
           </div>
         )}
 
+        {/* ── INDICATEUR DE PROGRESSION DES PHASES DU JOUR ── */}
+        {['jour_accusation', 'jour_defense', 'jour_vote'].includes(salonData.statut) && (
+          <div
+            style={{
+              marginTop: '1.25rem',
+              marginBottom: '1rem',
+              padding: '10px 14px',
+              borderRadius: '14px',
+              background: 'var(--input-bg)',
+              border: '1.5px solid var(--card-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '6px',
+              overflowX: 'auto',
+            }}
+          >
+            {/* Étape 1 : Accusations */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              opacity: salonData.statut === 'jour_accusation' ? 1 : 0.5,
+              padding: '4px 8px',
+              borderRadius: '8px',
+              background: salonData.statut === 'jour_accusation' ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+              border: salonData.statut === 'jour_accusation' ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid transparent',
+              flexShrink: 0,
+            }}>
+              <span style={{
+                width: '22px',
+                height: '22px',
+                borderRadius: '50%',
+                background: salonData.statut === 'jour_accusation' ? '#ef4444' : 'rgba(255,255,255,0.15)',
+                color: '#fff',
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>1</span>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: salonData.statut === 'jour_accusation' ? '#ef4444' : 'var(--text-color)' }}>
+                  Accusations
+                </div>
+                <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>Débats & Suspects</div>
+              </div>
+            </div>
+
+            <ChevronRight size={15} style={{ opacity: 0.35, flexShrink: 0 }} />
+
+            {/* Étape 2 : Défenses */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              opacity: salonData.statut === 'jour_defense' ? 1 : 0.5,
+              padding: '4px 8px',
+              borderRadius: '8px',
+              background: salonData.statut === 'jour_defense' ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+              border: salonData.statut === 'jour_defense' ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid transparent',
+              flexShrink: 0,
+            }}>
+              <span style={{
+                width: '22px',
+                height: '22px',
+                borderRadius: '50%',
+                background: salonData.statut === 'jour_defense' ? '#8b5cf6' : 'rgba(255,255,255,0.15)',
+                color: '#fff',
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>2</span>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: salonData.statut === 'jour_defense' ? '#8b5cf6' : 'var(--text-color)' }}>
+                  Défenses
+                </div>
+                <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>Tribunal des accusés</div>
+              </div>
+            </div>
+
+            <ChevronRight size={15} style={{ opacity: 0.35, flexShrink: 0 }} />
+
+            {/* Étape 3 : Vote Final */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              opacity: salonData.statut === 'jour_vote' ? 1 : 0.5,
+              padding: '4px 8px',
+              borderRadius: '8px',
+              background: salonData.statut === 'jour_vote' ? 'rgba(225, 29, 72, 0.15)' : 'transparent',
+              border: salonData.statut === 'jour_vote' ? '1px solid rgba(225, 29, 72, 0.4)' : '1px solid transparent',
+              flexShrink: 0,
+            }}>
+              <span style={{
+                width: '22px',
+                height: '22px',
+                borderRadius: '50%',
+                background: salonData.statut === 'jour_vote' ? '#e11d48' : 'rgba(255,255,255,0.15)',
+                color: '#fff',
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>3</span>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: salonData.statut === 'jour_vote' ? '#e11d48' : 'var(--text-color)' }}>
+                  Vote Final
+                </div>
+                <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>Bûcher du village</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── 1. PHASE D'ACCUSATIONS DU VILLAGE (JOUR_ACCUSATION) ─────────── */}
         {salonData.statut === 'jour_accusation' && (
           <div style={{ marginTop: '1.5rem', textAlign: 'left' }}>
@@ -2756,6 +2888,16 @@ export default function PlayerScreen() {
                 </div>
               );
             })()}
+
+            {/* Chat des accusations (Débats & Arguments de la Place Publique) */}
+            <div style={{ marginTop: '1.25rem' }}>
+              <AccusationsChat
+                roomId={roomId}
+                salonData={salonData}
+                senderName={me.nom}
+                isDead={false}
+              />
+            </div>
           </div>
         )}
 

@@ -17,7 +17,7 @@ import {
   RoleDetailsModal, GrimoireModal, AutomationBadge, PhaseTimer,
 } from './RoleComponents';
 import {
-  WolfPackChat, AccusedDefenseChat, MjMessengerPanel,
+  WolfPackChat, AccusationsChat, AccusedDefenseChat, MjMessengerPanel,
 } from './GameChats';
 import AiTestPanel from './AiTestPanel';
 import { isBot } from './aiBotEngine';
@@ -441,6 +441,7 @@ export default function MjDashboard() {
         duree_vote: 60,
         // ── Chats & Messagerie ──
         chat_loups: [],
+        chat_accusation: [],
         chat_defense: [],
         messages_mj: [],
         // ── Divers ──
@@ -862,6 +863,7 @@ export default function MjDashboard() {
       await updateDoc(doc(db, 'salons', roomId), {
         statut: 'jour_accusation',
         la_liste_accuses: [],
+        chat_accusation: [],
         votes: {},
         phase_started_at: Date.now(),
         auto_mj_phase_started_at: Date.now(),
@@ -1277,6 +1279,7 @@ export default function MjDashboard() {
         la_liste_accuses: [],
         votes: {},
         chat_loups: [],
+        chat_accusation: [],
         chat_defense: [],
         notif_mj: null,
         notifications_mj: veninNotif ? [veninNotif] : [],
@@ -1328,6 +1331,7 @@ export default function MjDashboard() {
         la_liste_accuses: [],
         votes: {},
         chat_loups: [],
+        chat_accusation: [],
         chat_defense: [],
         messages_mj: [],
         notifications_mj: [],
@@ -2299,6 +2303,16 @@ export default function MjDashboard() {
                     );
                   })}
                 </ul>
+
+                {/* Chat des accusations (Débats du village) */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <AccusationsChat
+                    roomId={roomId}
+                    salonData={salonData}
+                    senderName="Maître du Jeu"
+                    isMj={true}
+                  />
+                </div>
 
                 <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
                   <button

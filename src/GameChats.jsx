@@ -6,6 +6,7 @@ import { RoleCardView, RoleIcon } from './RoleComponents';
 import {
   MessageSquare, Send, Bell, PawPrint, Gavel, Megaphone,
   User, Users, CheckCircle2, X, Sparkles, RefreshCw, Trash2,
+  Scale, AlertTriangle,
 } from 'lucide-react';
 
 // ─── 1. Chat nocturne de la Meute des Loups ──────────────────────────────────
@@ -145,7 +146,198 @@ export function WolfPackChat({ roomId, salonData, senderName, isReadOnly = false
   );
 }
 
-// ─── 2. Chat de Défense des Accusés (Tribunal du Village) ────────────────────
+// ─── 2. Chat des Accusations (Débats de la Place Publique) ────────────────────
+export function AccusationsChat({ roomId, salonData, senderName, isMj = false, isDead = false }) {
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const listRef = useRef(null);
+
+  const messages = Array.isArray(salonData?.chat_accusation) ? salonData.chat_accusation : [];
+
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+  }, [messages.length]);
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!text.trim() || sending || isDead) return;
+    setSending(true);
+    const msgObj = {
+      id: `acc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      auteur: senderName,
+      roleBadge: isMj ? 'MJ' : 'VILLAGE',
+      texte: text.trim(),
+      heure: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    try {
+      await updateDoc(doc(db, 'salons', roomId), {
+        chat_accusation: arrayUnion(msgObj),
+      });
+      setText('');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: '1rem',
+        padding: '1rem',
+        borderRadius: '14px',
+        background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(220, 38, 38, 0.03) 100%)',
+        border: '1.5px solid rgba(239, 68, 68, 0.45)',
+        textAlign: 'left',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '0.65rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '8px',
+            background: 'rgba(239, 68, 68, 0.22)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <Megaphone size={16} style={{ color: '#ef4444' }} />
+          </div>
+          <div>
+            <h4 className="title-font" style={{ margin: 0, color: '#ef4444', fontSize: '0.96rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              Place Publique — Débats & Accusations
+            </h4>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              Échangez vos soupçons et donnez vos arguments pour inciter le village à accuser
+            </span>
+          </div>
+        </div>
+        <span
+          style={{
+            fontSize: '0.68rem',
+            fontWeight: 800,
+            padding: '3px 8px',
+            borderRadius: '6px',
+            background: '#ef4444',
+            color: '#fff',
+            letterSpacing: '0.4px',
+          }}
+        >
+          PHASE 1 · ACCUSATIONS
+        </span>
+      </div>
+
+      <div
+        ref={listRef}
+        style={{
+          maxHeight: '210px',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px',
+          padding: '0.55rem',
+          borderRadius: '8px',
+          background: 'rgba(0, 0, 0, 0.3)',
+          marginBottom: isDead ? 0 : '0.65rem',
+        }}
+      >
+        {messages.length === 0 ? (
+          <p className="text-font" style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '0.6rem 0' }}>
+            Aucun argument déposé pour le moment. Proposez un suspect et incitez vos concitoyens à l'accuser !
+          </p>
+        ) : (
+          messages.map((m) => {
+            const isMine = m.auteur === senderName;
+            const isMjMsg = m.roleBadge === 'MJ';
+            return (
+              <div
+                key={m.id}
+                style={{
+                  padding: '7px 10px',
+                  borderRadius: '8px',
+                  background: isMine
+                    ? 'rgba(239, 68, 68, 0.18)'
+                    : isMjMsg
+                      ? 'rgba(139, 92, 246, 0.2)'
+                      : 'rgba(255, 255, 255, 0.06)',
+                  borderLeft: `3px solid ${isMine ? '#ef4444' : isMjMsg ? '#8b5cf6' : 'rgba(239, 68, 68, 0.4)'}`,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong className="text-font" style={{ fontSize: '0.78rem', color: isMine ? '#fca5a5' : 'var(--text-color)' }}>
+                      {m.auteur}
+                    </strong>
+                    <span
+                      style={{
+                        fontSize: '0.62rem',
+                        fontWeight: 800,
+                        padding: '1px 6px',
+                        borderRadius: '1rem',
+                        background: isMjMsg ? '#8b5cf6' : 'rgba(239, 68, 68, 0.22)',
+                        color: isMjMsg ? '#fff' : '#fca5a5',
+                        border: isMjMsg ? 'none' : '1px solid rgba(239, 68, 68, 0.4)',
+                      }}
+                    >
+                      {isMjMsg ? 'MAÎTRE DU JEU' : 'HABITANT'}
+                    </span>
+                  </div>
+                  <span className="text-font" style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                    {m.heure}
+                  </span>
+                </div>
+                <p className="text-font" style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-color)', wordBreak: 'break-word', lineHeight: 1.38 }}>
+                  {m.texte}
+                </p>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {!isDead && (
+        <form onSubmit={handleSend} style={{ display: 'flex', gap: '6px' }}>
+          <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={
+              isMj
+                ? "Intervenir dans le débat en tant que Maître du Jeu..."
+                : "Partager des soupçons ou inciter à accuser un joueur..."
+            }
+            maxLength={260}
+            className="text-font"
+            style={{
+              flex: 1,
+              padding: '8px 11px',
+              borderRadius: '8px',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              background: 'var(--input-bg)',
+              color: 'var(--text-color)',
+              fontSize: '0.85rem',
+              outline: 'none',
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!text.trim() || sending}
+            className="btn-primary"
+            style={{ width: 'auto', padding: '8px 14px', background: '#ef4444', fontSize: '0.82rem' }}
+          >
+            <Send size={15} />
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ─── 3. Chat de Défense des Accusés (Tribunal du Village) ────────────────────
 export function AccusedDefenseChat({ roomId, salonData, senderName, isMj = false, isDead = false }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -166,7 +358,7 @@ export function AccusedDefenseChat({ roomId, salonData, senderName, isMj = false
     if (!text.trim() || sending || isDead) return;
     setSending(true);
     const msgObj = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: `def_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       auteur: senderName,
       roleBadge: isMj ? 'MJ' : isSenderAccused ? 'ACCUSÉ' : 'VILLAGE',
       texte: text.trim(),
@@ -189,22 +381,54 @@ export function AccusedDefenseChat({ roomId, salonData, senderName, isMj = false
       style={{
         marginTop: '1rem',
         padding: '1rem',
-        borderRadius: '12px',
-        background: 'rgba(245, 158, 11, 0.08)',
-        border: '1.5px solid rgba(245, 158, 11, 0.4)',
+        borderRadius: '14px',
+        background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(109, 40, 217, 0.03) 100%)',
+        border: '1.5px solid rgba(139, 92, 246, 0.45)',
         textAlign: 'left',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px', marginBottom: '0.6rem' }}>
-        <h4 className="title-font" style={{ margin: 0, color: '#f59e0b', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Gavel size={16} />
-          <span>Tribunal — Défense des Accusés</span>
-        </h4>
-        {isSenderAccused && (
-          <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '1rem', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)' }}>
-            Vous êtes sur le banc des accusés
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '0.65rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '8px',
+            background: 'rgba(139, 92, 246, 0.22)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <Gavel size={16} style={{ color: '#a78bfa' }} />
+          </div>
+          <div>
+            <h4 className="title-font" style={{ margin: 0, color: '#c4b5fd', fontSize: '0.96rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              Tribunal du Village — Plaidoyers & Défenses
+            </h4>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              Les accusés ont la parole pour prouver leur innocence avant le vote final
+            </span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          {isSenderAccused && (
+            <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.25)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)' }}>
+              VOUS ÊTES ACCUSÉ
+            </span>
+          )}
+          <span
+            style={{
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              padding: '3px 8px',
+              borderRadius: '6px',
+              background: '#8b5cf6',
+              color: '#fff',
+              letterSpacing: '0.4px',
+            }}
+          >
+            PHASE 2 · DÉFENSES
           </span>
-        )}
+        </div>
       </div>
 
       <div
@@ -217,18 +441,19 @@ export function AccusedDefenseChat({ roomId, salonData, senderName, isMj = false
           gap: '6px',
           padding: '0.55rem',
           borderRadius: '8px',
-          background: 'rgba(0, 0, 0, 0.25)',
+          background: 'rgba(0, 0, 0, 0.3)',
           marginBottom: isDead ? 0 : '0.65rem',
         }}
       >
         {messages.length === 0 ? (
-          <p className="text-font" style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '0.5rem 0' }}>
-            Les accusés peuvent présenter leur défense ici avant que le village ne tranche...
+          <p className="text-font" style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '0.6rem 0' }}>
+            Les accusés peuvent présenter leur plaidoyer ici avant que le village ne tranche...
           </p>
         ) : (
           messages.map((m) => {
             const isAccusedMsg = m.roleBadge === 'ACCUSÉ' || accusesList.includes(m.auteur);
             const isMjMsg = m.roleBadge === 'MJ';
+            const isMine = m.auteur === senderName;
             return (
               <div
                 key={m.id}
@@ -245,12 +470,12 @@ export function AccusedDefenseChat({ roomId, salonData, senderName, isMj = false
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <strong className="text-font" style={{ fontSize: '0.78rem', color: 'var(--text-color)' }}>
+                    <strong className="text-font" style={{ fontSize: '0.78rem', color: isMine ? '#c4b5fd' : 'var(--text-color)' }}>
                       {m.auteur}
                     </strong>
                     <span
                       style={{
-                        fontSize: '0.64rem',
+                        fontSize: '0.62rem',
                         fontWeight: 800,
                         padding: '1px 6px',
                         borderRadius: '1rem',
@@ -293,7 +518,7 @@ export function AccusedDefenseChat({ roomId, salonData, senderName, isMj = false
               flex: 1,
               padding: '8px 11px',
               borderRadius: '8px',
-              border: '1px solid var(--card-border)',
+              border: '1px solid rgba(139, 92, 246, 0.35)',
               background: 'var(--input-bg)',
               color: 'var(--text-color)',
               fontSize: '0.85rem',
@@ -304,7 +529,7 @@ export function AccusedDefenseChat({ roomId, salonData, senderName, isMj = false
             type="submit"
             disabled={!text.trim() || sending}
             className="btn-primary"
-            style={{ width: 'auto', padding: '8px 14px', background: '#f59e0b', fontSize: '0.82rem' }}
+            style={{ width: 'auto', padding: '8px 14px', background: '#8b5cf6', fontSize: '0.82rem' }}
           >
             <Send size={15} />
           </button>
