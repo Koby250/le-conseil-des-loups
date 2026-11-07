@@ -84,7 +84,7 @@ export default function AiTestPanel({ roomId, salonData, joueurs = [] }) {
   const handleAutoPickCards = async () => {
     setIsProcessing(true);
     try {
-      const count = await botAutoPickCards(roomId, salonData, joueurs);
+      const count = await botAutoPickCards(roomId, salonData, joueurs, { forceEvenIfHumanWaiting: true });
       setLastActionMsg(`${count} Bot(s) ont tiré leur carte.`);
     } catch (e) {
       console.error(e);

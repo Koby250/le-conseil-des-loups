@@ -73,31 +73,348 @@ export function createBotPlayerObject(name, cardIndex = null, assignedRole = '')
   };
 }
 
+/**
+ * Garantit l'unicité stricte des cartes choisies et le respect absolu des quotas
+ * de rôles configurés dans `salonData.roles_selectionnes`.
+ * - Si deux joueurs ont choisi la même carte simultanément :
+ *   - Un joueur humain est toujours prioritaire sur un Bot IA.
+ *   - Entre deux humains, le premier enregistré dans `cartes_prises` (ou par ID) conserve la carte,
+ *     et le second voit sa `carte_choisie` remise à `null` avec un message d'alerte pour qu'il choisisse un autre numéro.
+ *   - Un Bot IA évincé reçoit automatiquement une autre carte libre.
+ * - Vérifie également qu'aucun rôle n'est attribué plus de fois que son quota dans `roles_selectionnes`.
+ * Retourne `true` si des corrections ont été appliquées en base, ou `false` si tout est déjà strictement valide.
+ */
+export async function reconcileCardAndRoleDuplicates(roomId, salonData, joueurs = []) {
+  if (!roomId || !salonData || !Array.isArray(joueurs) || joueurs.length === 0) return false;
+  if (salonData.statut !== 'en_attente') return false;
+
+  const rolesSelectionnes = Array.isArray(salonData.roles_selectionnes) ? salonData.roles_selectionnes : [];
+  let rolesMelanges = Array.isArray(salonData.roles_melanges) ? [...salonData.roles_melanges] : [];
+  const cartesPrises = salonData.cartes_prises && typeof salonData.cartes_prises === 'object'
+    ? { ...salonData.cartes_prises }
+    : {};
+
+  if (rolesSelectionnes.length === 0) return false;
+
+  const batch = writeBatch(db);
+  let hasChanges = false;
+  let salonNeedsUpdate = false;
+  const salonUpdates = {};
+
+  // 1. Vérifier que `roles_melanges` correspond exactement aux quotas de `roles_selectionnes`
+  const targetCounts = {};
+  rolesSelectionnes.forEach(r => { targetCounts[r] = (targetCounts[r] || 0) + 1; });
+
+  const melangeCounts = {};
+  rolesMelanges.forEach(r => { melangeCounts[r] = (melangeCounts[r] || 0) + 1; });
+
+  let melangeInvalid = rolesMelanges.length !== rolesSelectionnes.length;
+  if (!melangeInvalid) {
+    for (const r of Object.keys(targetCounts)) {
+      if (melangeCounts[r] !== targetCounts[r]) {
+        melangeInvalid = true;
+        break;
+      }
+    }
+  }
+
+  if (melangeInvalid && salonData.distribution_mode !== 'manuelle') {
+    const remainingPool = { ...targetCounts };
+    const fixedMelange = new Array(rolesSelectionnes.length).fill(null);
+
+    const sortedPicked = [...joueurs]
+      .filter(j => typeof j.carte_choisie === 'number' && j.carte_choisie >= 0 && j.carte_choisie < rolesSelectionnes.length && j.role)
+      .sort((a, b) => (isBot(a) === isBot(b) ? 0 : isBot(a) ? 1 : -1));
+
+    for (const p of sortedPicked) {
+      const idx = p.carte_choisie;
+      if (fixedMelange[idx] === null && remainingPool[p.role] > 0) {
+        fixedMelange[idx] = p.role;
+        remainingPool[p.role]--;
+      }
+    }
+
+    const leftoverRoles = [];
+    Object.entries(remainingPool).forEach(([roleId, count]) => {
+      for (let i = 0; i < count; i++) leftoverRoles.push(roleId);
+    });
+    const shuffledLeftovers = shuffleArray(leftoverRoles);
+
+    for (let i = 0; i < fixedMelange.length; i++) {
+      if (fixedMelange[i] === null) {
+        fixedMelange[i] = shuffledLeftovers.pop() || 'villageois';
+      }
+    }
+
+    rolesMelanges = fixedMelange;
+    salonUpdates.roles_melanges = rolesMelanges;
+    salonNeedsUpdate = true;
+  }
+
+  // 2. Mode aléatoire : Unicité stricte de `carte_choisie` et correspondance `role === roles_melanges[carte_choisie]`
+  if (salonData.distribution_mode !== 'manuelle' && rolesMelanges.length > 0) {
+    const byCard = new Map();
+    const displacedBots = [];
+    const invalidPlayers = [];
+
+    for (const j of joueurs) {
+      if (j.carte_choisie === null || j.carte_choisie === undefined || j.carte_choisie === 999) {
+        continue;
+      }
+      const idx = Number(j.carte_choisie);
+      if (Number.isNaN(idx) || idx < 0 || idx >= rolesMelanges.length) {
+        invalidPlayers.push(j);
+        continue;
+      }
+      if (!byCard.has(idx)) byCard.set(idx, []);
+      byCard.get(idx).push(j);
+    }
+
+    const usedIndices = new Set();
+    let resetHumansCount = 0;
+
+    for (const [idx, owners] of byCard.entries()) {
+      owners.sort((a, b) => {
+        const aBot = isBot(a);
+        const bBot = isBot(b);
+        if (aBot !== bBot) return aBot ? 1 : -1;
+        const recordedOwner = cartesPrises[String(idx)];
+        if (recordedOwner === a.id && recordedOwner !== b.id) return -1;
+        if (recordedOwner === b.id && recordedOwner !== a.id) return 1;
+        return String(a.id).localeCompare(String(b.id));
+      });
+
+      const winner = owners[0];
+      usedIndices.add(idx);
+
+      if (cartesPrises[String(idx)] !== winner.id) {
+        cartesPrises[String(idx)] = winner.id;
+        salonNeedsUpdate = true;
+      }
+
+      const expectedRole = rolesMelanges[idx];
+      if (winner.role !== expectedRole || (expectedRole === 'ancien' && winner.vies !== 2)) {
+        batch.update(doc(db, 'salons', roomId, 'joueurs', winner.id), {
+          role: expectedRole,
+          vies: expectedRole === 'ancien' ? 2 : 1,
+          infection_dispo: expectedRole === 'infect-pere-des-loups' || expectedRole === 'pere-des-loups',
+        });
+        hasChanges = true;
+      }
+
+      for (let k = 1; k < owners.length; k++) {
+        const loser = owners[k];
+        if (isBot(loser)) {
+          displacedBots.push(loser);
+        } else {
+          resetHumansCount++;
+          batch.update(doc(db, 'salons', roomId, 'joueurs', loser.id), {
+            carte_choisie: null,
+            role: '',
+            vies: 1,
+            infection_dispo: false,
+            conflit_carte_msg: `Vous avez appuyé simultanément sur la carte #${idx + 1} avec ${winner.nom}. Cette carte a été attribuée à ${winner.nom} — veuillez choisir un autre numéro de carte !`,
+          });
+          hasChanges = true;
+        }
+      }
+    }
+
+    for (const inv of invalidPlayers) {
+      if (isBot(inv)) {
+        displacedBots.push(inv);
+      } else {
+        resetHumansCount++;
+        batch.update(doc(db, 'salons', roomId, 'joueurs', inv.id), {
+          carte_choisie: null,
+          role: '',
+          vies: 1,
+          infection_dispo: false,
+        });
+        hasChanges = true;
+      }
+    }
+
+    for (const j of joueurs) {
+      if ((j.carte_choisie === null || j.carte_choisie === undefined) && j.role) {
+        batch.update(doc(db, 'salons', roomId, 'joueurs', j.id), {
+          role: '',
+          vies: 1,
+          infection_dispo: false,
+        });
+        hasChanges = true;
+      }
+    }
+
+    if (displacedBots.length > 0) {
+      const freeIndices = [];
+      for (let i = 0; i < rolesMelanges.length; i++) {
+        if (!usedIndices.has(i)) freeIndices.push(i);
+      }
+      const unpickedHumans = joueurs.filter(
+        j => !isBot(j) && (j.carte_choisie === null || j.carte_choisie === undefined)
+      ).length + resetHumansCount;
+
+      for (const bot of displacedBots) {
+        if (freeIndices.length > unpickedHumans) {
+          const newIdx = freeIndices.pop();
+          const newRole = rolesMelanges[newIdx];
+          usedIndices.add(newIdx);
+          cartesPrises[String(newIdx)] = bot.id;
+          salonNeedsUpdate = true;
+
+          const botUpd = {
+            carte_choisie: newIdx,
+            role: newRole,
+            vies: newRole === 'ancien' ? 2 : 1,
+            infection_dispo: newRole === 'infect-pere-des-loups' || newRole === 'pere-des-loups',
+          };
+          if (newRole === 'chien-loup') {
+            botUpd.choix_chien = Math.random() < 0.4 ? 'loup' : 'villageois';
+          }
+          batch.update(doc(db, 'salons', roomId, 'joueurs', bot.id), botUpd);
+          hasChanges = true;
+        } else {
+          batch.update(doc(db, 'salons', roomId, 'joueurs', bot.id), {
+            carte_choisie: null,
+            role: '',
+            vies: 1,
+            infection_dispo: false,
+          });
+          hasChanges = true;
+        }
+      }
+    }
+
+    for (const key of Object.keys(cartesPrises)) {
+      const idx = Number(key);
+      if (!usedIndices.has(idx)) {
+        delete cartesPrises[key];
+        salonNeedsUpdate = true;
+      }
+    }
+  } else if (salonData.distribution_mode === 'manuelle') {
+    const roleGroups = new Map();
+    for (const j of joueurs) {
+      if (!j.role) continue;
+      if (!roleGroups.has(j.role)) roleGroups.set(j.role, []);
+      roleGroups.get(j.role).push(j);
+    }
+
+    for (const [roleId, owners] of roleGroups.entries()) {
+      const maxAllowed = targetCounts[roleId] || 0;
+      if (owners.length > maxAllowed) {
+        owners.sort((a, b) => (isBot(a) === isBot(b) ? 0 : isBot(a) ? 1 : -1));
+        for (let k = maxAllowed; k < owners.length; k++) {
+          const excessPlayer = owners[k];
+          batch.update(doc(db, 'salons', roomId, 'joueurs', excessPlayer.id), {
+            role: '',
+            carte_choisie: null,
+            vies: 1,
+            infection_dispo: false,
+          });
+          hasChanges = true;
+        }
+      }
+    }
+  }
+
+  if (salonNeedsUpdate) {
+    salonUpdates.cartes_prises = cartesPrises;
+    batch.update(doc(db, 'salons', roomId), salonUpdates);
+  }
+
+  if (hasChanges || salonNeedsUpdate) {
+    try {
+      await batch.commit();
+    } catch (e) {
+      console.error('Erreur reconcileCardAndRoleDuplicates:', e);
+    }
+  }
+
+  return hasChanges;
+}
+
+/**
+ * Vérifie de manière synchrone si toutes les cartes et tous les rôles des joueurs
+ * sont strictement uniques et respectent les quotas de `salonData.roles_selectionnes`.
+ */
+export function areAllCardsAndRolesValidForStart(salonData, joueurs = []) {
+  if (!salonData || !Array.isArray(joueurs) || joueurs.length === 0) return false;
+  const rolesSelectionnes = Array.isArray(salonData.roles_selectionnes) ? salonData.roles_selectionnes : [];
+  const rolesMelanges = Array.isArray(salonData.roles_melanges) ? salonData.roles_melanges : [];
+
+  const targetCounts = {};
+  rolesSelectionnes.forEach(r => { targetCounts[r] = (targetCounts[r] || 0) + 1; });
+
+  const actualCounts = {};
+  const seenCards = new Set();
+
+  for (const j of joueurs) {
+    if (!j.role) return false;
+    actualCounts[j.role] = (actualCounts[j.role] || 0) + 1;
+    if (actualCounts[j.role] > (targetCounts[j.role] || 0)) {
+      return false;
+    }
+    if (salonData.distribution_mode !== 'manuelle') {
+      const idx = j.carte_choisie;
+      if (idx === null || idx === undefined || idx < 0 || idx >= rolesMelanges.length) {
+        return false;
+      }
+      if (seenCards.has(idx)) {
+        return false;
+      }
+      seenCards.add(idx);
+      if (j.role !== rolesMelanges[idx]) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 /** Ajoute 1 Bot IA dans le salon */
 export async function addSingleBot(roomId, salonData, existingJoueurs = []) {
   if (!roomId) return null;
   const botName = getAvailableBotName(existingJoueurs);
   const stableId = 'bot_' + roomId + '_' + botName.toLowerCase().replace(/[^a-z0-9]/g, '_');
 
-  // Si on est en attente aléatoire, le bot peut directement piocher une carte disponible
   let cardIndex = null;
   let assignedRole = '';
+  const batch = writeBatch(db);
 
-  if (salonData?.statut === 'en_attente' && salonData.distribution_mode !== 'manuelle' && Array.isArray(salonData.roles_melanges)) {
-    const takenCards = new Set(
-      existingJoueurs.filter(j => j.carte_choisie !== null && j.carte_choisie !== 999).map(j => j.carte_choisie)
-    );
-    for (let i = 0; i < salonData.roles_melanges.length; i++) {
+  const unpickedHumans = existingJoueurs.filter(
+    j => !isBot(j) && (j.carte_choisie === null || j.carte_choisie === undefined)
+  ).length;
+
+  // Si aucun humain n'est en train de choisir sa carte, le bot peut piocher une carte libre (depuis la fin)
+  if (
+    unpickedHumans === 0 &&
+    salonData?.statut === 'en_attente' &&
+    salonData.distribution_mode !== 'manuelle' &&
+    Array.isArray(salonData.roles_melanges)
+  ) {
+    const cartesPrises = salonData.cartes_prises || {};
+    const takenCards = new Set([
+      ...existingJoueurs.filter(j => j.carte_choisie !== null && j.carte_choisie !== 999).map(j => Number(j.carte_choisie)),
+      ...Object.keys(cartesPrises).map(Number),
+    ]);
+    for (let i = salonData.roles_melanges.length - 1; i >= 0; i--) {
       if (!takenCards.has(i)) {
         cardIndex = i;
         assignedRole = salonData.roles_melanges[i];
+        batch.update(doc(db, 'salons', roomId), {
+          [`cartes_prises.${i}`]: stableId,
+        });
         break;
       }
     }
   }
 
   const botData = createBotPlayerObject(botName, cardIndex, assignedRole);
-  await setDoc(doc(db, 'salons', roomId, 'joueurs', stableId), botData);
+  batch.set(doc(db, 'salons', roomId, 'joueurs', stableId), botData);
+  await batch.commit();
   return botName;
 }
 
@@ -111,9 +428,15 @@ export async function fillSalonWithBots(roomId, salonData, existingJoueurs = [])
   const needed = targetCount - existingJoueurs.length;
   if (needed <= 0) return 0;
 
-  const takenCards = new Set(
-    existingJoueurs.filter(j => j.carte_choisie !== null && j.carte_choisie !== 999).map(j => j.carte_choisie)
-  );
+  const unpickedHumans = existingJoueurs.filter(
+    j => !isBot(j) && (j.carte_choisie === null || j.carte_choisie === undefined)
+  ).length;
+
+  const cartesPrises = salonData.cartes_prises || {};
+  const takenCards = new Set([
+    ...existingJoueurs.filter(j => j.carte_choisie !== null && j.carte_choisie !== 999).map(j => Number(j.carte_choisie)),
+    ...Object.keys(cartesPrises).map(Number),
+  ]);
 
   const availableCardIndices = [];
   if (Array.isArray(salonData.roles_melanges)) {
@@ -124,6 +447,7 @@ export async function fillSalonWithBots(roomId, salonData, existingJoueurs = [])
 
   const batch = writeBatch(db);
   const updatedList = [...existingJoueurs];
+  const newCartesPrises = {};
   let addedCount = 0;
 
   for (let k = 0; k < needed; k++) {
@@ -133,9 +457,16 @@ export async function fillSalonWithBots(roomId, salonData, existingJoueurs = [])
     let cardIndex = null;
     let assignedRole = '';
 
-    if (salonData.statut === 'en_attente' && salonData.distribution_mode !== 'manuelle' && availableCardIndices.length > 0) {
-      cardIndex = availableCardIndices.shift();
+    // Si aucun humain n'attend de tirer sa carte, les bots tirent directement depuis la fin du paquet
+    if (
+      unpickedHumans === 0 &&
+      salonData.statut === 'en_attente' &&
+      salonData.distribution_mode !== 'manuelle' &&
+      availableCardIndices.length > 0
+    ) {
+      cardIndex = availableCardIndices.pop();
       assignedRole = salonData.roles_melanges[cardIndex] || '';
+      newCartesPrises[`cartes_prises.${cardIndex}`] = stableId;
     }
 
     const botObj = createBotPlayerObject(botName, cardIndex, assignedRole);
@@ -144,47 +475,86 @@ export async function fillSalonWithBots(roomId, salonData, existingJoueurs = [])
     addedCount++;
   }
 
+  if (Object.keys(newCartesPrises).length > 0) {
+    batch.update(doc(db, 'salons', roomId), newCartesPrises);
+  }
+
   await batch.commit();
   return addedCount;
 }
 
 /** Fait tirer les cartes restantes à tous les bots sans carte */
-export async function botAutoPickCards(roomId, salonData, existingJoueurs = []) {
+export async function botAutoPickCards(roomId, salonData, existingJoueurs = [], options = {}) {
   if (!roomId || !salonData || !Array.isArray(salonData.roles_melanges)) return 0;
 
-  const takenCards = new Set(
-    existingJoueurs.filter(j => j.carte_choisie !== null && j.carte_choisie !== 999).map(j => j.carte_choisie)
+  // D'abord corriger tout doublon éventuel
+  const hadDuplicates = await reconcileCardAndRoleDuplicates(roomId, salonData, existingJoueurs);
+  if (hadDuplicates) return 0;
+
+  const unpickedHumans = existingJoueurs.filter(
+    j => !isBot(j) && (j.carte_choisie === null || j.carte_choisie === undefined)
+  ).length;
+
+  // Tant qu'un joueur humain dans le salon n'a pas encore choisi sa carte, les bots patientent
+  // pour lui laisser le libre choix de tous les numéros et éviter toute collision simultanée.
+  if (unpickedHumans > 0 && !options.forceEvenIfHumanWaiting) {
+    return 0;
+  }
+
+  const botsWithoutCard = existingJoueurs.filter(
+    j => isBot(j) && (j.carte_choisie === null || j.carte_choisie === undefined)
   );
-  const freeCards = [];
-  for (let i = 0; i < salonData.roles_melanges.length; i++) {
-    if (!takenCards.has(i)) freeCards.push(i);
-  }
+  if (botsWithoutCard.length === 0) return 0;
 
-  const botsWithoutCard = existingJoueurs.filter(j => isBot(j) && j.carte_choisie === null);
-  if (botsWithoutCard.length === 0 || freeCards.length === 0) return 0;
-
-  const batch = writeBatch(db);
   let picked = 0;
+  try {
+    await runTransaction(db, async transaction => {
+      const salonRef = doc(db, 'salons', roomId);
+      const salonSnap = await transaction.get(salonRef);
+      if (!salonSnap.exists()) return;
+      const freshSalon = salonSnap.data();
+      const rolesMelanges = Array.isArray(freshSalon.roles_melanges) ? freshSalon.roles_melanges : [];
+      const cartesPrises = { ...(freshSalon.cartes_prises || {}) };
 
-  for (const bot of botsWithoutCard) {
-    if (freeCards.length === 0) break;
-    const cardIdx = freeCards.shift();
-    const assignedRole = salonData.roles_melanges[cardIdx];
+      const takenCards = new Set([
+        ...existingJoueurs
+          .filter(j => j.carte_choisie !== null && j.carte_choisie !== undefined && j.carte_choisie !== 999)
+          .map(j => Number(j.carte_choisie)),
+        ...Object.keys(cartesPrises).map(Number),
+      ]);
 
-    const updates = {
-      carte_choisie: cardIdx,
-      role: assignedRole,
-      vies: assignedRole === 'ancien' ? 2 : 1,
-      infection_dispo: assignedRole === 'infect-pere-des-loups' || assignedRole === 'pere-des-loups',
-    };
-    if (assignedRole === 'chien-loup') {
-      updates.choix_chien = Math.random() < 0.4 ? 'loup' : 'villageois';
-    }
-    batch.update(doc(db, 'salons', roomId, 'joueurs', bot.id), updates);
-    picked++;
+      const freeCards = [];
+      for (let i = 0; i < rolesMelanges.length; i++) {
+        if (!takenCards.has(i)) freeCards.push(i);
+      }
+
+      for (const bot of botsWithoutCard) {
+        if (freeCards.length <= unpickedHumans) break;
+        const cardIdx = freeCards.pop();
+        const assignedRole = rolesMelanges[cardIdx];
+        cartesPrises[String(cardIdx)] = bot.id;
+
+        const updates = {
+          carte_choisie: cardIdx,
+          role: assignedRole,
+          vies: assignedRole === 'ancien' ? 2 : 1,
+          infection_dispo: assignedRole === 'infect-pere-des-loups' || assignedRole === 'pere-des-loups',
+        };
+        if (assignedRole === 'chien-loup') {
+          updates.choix_chien = Math.random() < 0.4 ? 'loup' : 'villageois';
+        }
+        transaction.update(doc(db, 'salons', roomId, 'joueurs', bot.id), updates);
+        picked++;
+      }
+
+      if (picked > 0) {
+        transaction.update(salonRef, { cartes_prises: cartesPrises });
+      }
+    });
+  } catch (e) {
+    console.error('Erreur botAutoPickCards transaction:', e);
   }
 
-  await batch.commit();
   return picked;
 }
 

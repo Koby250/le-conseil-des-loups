@@ -20,7 +20,7 @@ import {
   WolfPackChat, AccusationsChat, AccusedDefenseChat, MjMessengerPanel,
 } from './GameChats';
 import AiTestPanel from './AiTestPanel';
-import { isBot } from './aiBotEngine';
+import { isBot, reconcileCardAndRoleDuplicates } from './aiBotEngine';
 import { useAutoMj, checkGameEnd } from './autoMjEngine';
 import {
   Users, RefreshCw, Eye, Settings, Play,
@@ -397,6 +397,15 @@ export default function MjDashboard() {
   });
   const hasComedien = selectedRoles.includes('comedien');
 
+  // ── Garde d'intégrité anti-doublon des cartes et rôles en salle d'attente ──
+  useEffect(() => {
+    if (!roomId || salonData?.statut !== 'en_attente' || joueurs.length === 0) return;
+    const timer = setTimeout(() => {
+      reconcileCardAndRoleDuplicates(roomId, salonData, joueurs).catch(console.error);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [roomId, salonData, joueurs]);
+
   // ── Ouverture du salon ────────────────────────────────────────────────────
   const handleOpenSalon = async () => {
     if (selectedRoles.length < 3)
@@ -407,7 +416,8 @@ export default function MjDashboard() {
     setIsGenerating(true);
     try {
       const shuffled = shuffleArray([...selectedRoles]);
-      await setDoc(doc(db, 'salons', roomId), {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'salons', roomId), {
         code: roomId,
         statut: 'en_attente',
         distribution_mode: distributionMode,
@@ -415,6 +425,7 @@ export default function MjDashboard() {
         roles_dispo_comedien: comedienRoles,
         roles_dispo_comedien_init: comedienRoles,
         roles_melanges: shuffled,
+        cartes_prises: {},
         couple: [],
         numero_jour: 1,
         // ── Champs nuit ──
@@ -450,6 +461,43 @@ export default function MjDashboard() {
         morts_nuit: null,
         condamne_jour: null,
       });
+
+      // Réinitialiser proprement tout joueur déjà présent dans le salon pour éviter tout rôle résiduel
+      joueurs.forEach(j => {
+        batch.update(doc(db, 'salons', roomId, 'joueurs', j.id), {
+          carte_choisie: null,
+          role: '',
+          statut_joueur: 'en_vie',
+          pouvoir_utilise: false,
+          a_vote: false,
+          a_vote_sorciere: false,
+          vote_jour: null,
+          illusion_dispo: true,
+          dernier_protege: null,
+          potion_vie_utilisee: false,
+          potion_mort_utilisee: false,
+          vies: 1,
+          infection_dispo: false,
+          infection_repondu: false,
+          est_infecte: false,
+          tir_chasseur_fait: false,
+          gracie_idiot: false,
+          choix_chien: null,
+          modele_id: null,
+          modele_nom: null,
+          enfant_devenu_loup: false,
+          pouvoir_renard_perdu: false,
+          flair_nuit_utilise: false,
+          dernier_flair_nuit: null,
+          dernier_flair_resultat: null,
+          pouvoirs_perdus_ancien: false,
+          ancien_role: null,
+          proposition_role: null,
+          conflit_carte_msg: null,
+        });
+      });
+
+      await batch.commit();
     } catch (err) {
       console.error(err);
       alert('Erreur de création du salon.');
@@ -460,9 +508,17 @@ export default function MjDashboard() {
 
   const assignRoleManually = async (joueurId, roleId) => {
     try {
+      if (roleId) {
+        const maxQuota = (salonData?.roles_selectionnes || []).filter(r => r === roleId).length;
+        const usedByOthers = joueurs.filter(j => j.id !== joueurId && j.role === roleId).length;
+        if (usedByOthers >= maxQuota) {
+          const rName = getRole(roleId)?.name || roleId;
+          return alert(`Le rôle "${rName}" est limité à ${maxQuota} exemplaire(s) dans votre configuration et est déjà attribué.`);
+        }
+      }
       await updateDoc(doc(db, 'salons', roomId, 'joueurs', joueurId), {
         role: roleId,
-        carte_choisie: 999,
+        carte_choisie: roleId ? 999 : null,
         vies: roleId === 'ancien' ? 2 : 1,
         infection_dispo: roleId === 'infect-pere-des-loups' || roleId === 'pere-des-loups',
         infection_repondu: false,
@@ -501,14 +557,14 @@ export default function MjDashboard() {
     } catch (e) { console.error(e); }
   };
 
-  // ── Ajout dynamique d'un joueur ───────────────────────────────────────────
+  // ── Ajout dynamique d'un joueur (sans remélanger les cartes déjà tirées) ────
   const handleAddPlayer = async () => {
     try {
-      const newRoles = [...salonData.roles_selectionnes, 'villageois'];
-      const shuffled = shuffleArray([...newRoles]);
+      const newRoles = [...(salonData.roles_selectionnes || []), 'villageois'];
+      const newMelanges = [...(salonData.roles_melanges || []), 'villageois'];
       await updateDoc(doc(db, 'salons', roomId), {
         roles_selectionnes: newRoles,
-        roles_melanges: shuffled,
+        roles_melanges: newMelanges,
       });
     } catch (e) {
       console.error(e);
@@ -570,17 +626,42 @@ export default function MjDashboard() {
 
   // ── Lancement de la partie ────────────────────────────────────────────────
   const handleStartGame = async () => {
+    // 1. Vérifier et corriger tout doublon de carte ou de rôle avant de lancer
+    const hadDuplicates = await reconcileCardAndRoleDuplicates(roomId, salonData, joueurs);
+    if (hadDuplicates) {
+      return alert(
+        'Un doublon de carte ou de rôle (tirage simultané) a été détecté et corrigé automatiquement ! ' +
+        'Veuillez vérifier que tous les joueurs ont bien tiré leur nouvelle carte avant de lancer la partie.'
+      );
+    }
+
     if (salonData.distribution_mode === 'manuelle') {
       const allAssigned = joueurs.every(j => j.role && j.role !== '');
       if (!allAssigned)
         return alert('Tous les joueurs doivent avoir un rôle assigné en mode manuel.');
     } else {
-      const cartesChoisies = joueurs.filter(j => j.carte_choisie !== null);
+      const cartesChoisies = joueurs.filter(j => j.carte_choisie !== null && j.carte_choisie !== undefined);
       if (cartesChoisies.length !== salonData.roles_selectionnes.length) {
         if (!window.confirm(
           `Seulement ${cartesChoisies.length} joueurs ont choisi une carte sur ` +
           `${salonData.roles_selectionnes.length}. Lancer quand même ?`
         )) return;
+      }
+    }
+
+    // 2. Vérification stricte des quotas configurés dans `roles_selectionnes`
+    const targetCounts = {};
+    (salonData.roles_selectionnes || []).forEach(r => { targetCounts[r] = (targetCounts[r] || 0) + 1; });
+    const actualCounts = {};
+    for (const j of joueurs) {
+      if (!j.role) continue;
+      actualCounts[j.role] = (actualCounts[j.role] || 0) + 1;
+      if (actualCounts[j.role] > (targetCounts[j.role] || 0)) {
+        const rName = getRole(j.role)?.name || j.role;
+        return alert(
+          `Impossible de lancer : le rôle "${rName}" est attribué ${actualCounts[j.role]} fois ` +
+          `alors qu'il n'est paramétré que ${targetCounts[j.role] || 0} fois dans la configuration.`
+        );
       }
     }
 
@@ -1314,6 +1395,7 @@ export default function MjDashboard() {
         statut: 'SETUP',
         numero_jour: 1,
         roles_melanges: shuffled,
+        cartes_prises: {},
         roles_dispo_comedien: salonData.roles_dispo_comedien_init || [],
         couple: [],
         victime_loups: null,
@@ -1373,6 +1455,7 @@ export default function MjDashboard() {
           pouvoirs_perdus_ancien: false,
           ancien_role: null,
           proposition_role: null,
+          conflit_carte_msg: null,
         });
       });
 
@@ -2654,12 +2737,14 @@ export default function MjDashboard() {
             {(salonData.statut === 'en_attente' || salonData.statut === 'SETUP') && (
               <select
                 onChange={async (e) => {
-                  if (!e.target.value) return;
+                  const addedRole = e.target.value;
+                  if (!addedRole) return;
                   try {
-                    const newRoles = [...salonData.roles_selectionnes, e.target.value];
+                    const newRoles = [...(salonData.roles_selectionnes || []), addedRole];
+                    const newMelanges = [...(salonData.roles_melanges || []), addedRole];
                     await updateDoc(doc(db, 'salons', roomId), {
                       roles_selectionnes: newRoles,
-                      roles_melanges: shuffleArray(newRoles),
+                      roles_melanges: newMelanges,
                     });
                     e.target.value = "";
                   } catch (error) { console.error(error); }
@@ -2749,7 +2834,16 @@ export default function MjDashboard() {
                               <option value="">Sélectionner...</option>
                               {rolesData
                                 .filter(r => (salonData.roles_selectionnes || []).includes(r.id))
-                                .map(r => <option key={r.id} value={r.id}>{r.name}</option>)
+                                .map(r => {
+                                  const maxAllowed = (salonData.roles_selectionnes || []).filter(id => id === r.id).length;
+                                  const usedByOthers = joueurs.filter(other => other.id !== j.id && other.role === r.id).length;
+                                  const isQuotaReached = usedByOthers >= maxAllowed;
+                                  return (
+                                    <option key={r.id} value={r.id} disabled={isQuotaReached}>
+                                      {r.name} ({usedByOthers + (j.role === r.id ? 1 : 0)}/{maxAllowed}){isQuotaReached ? ' — Complet' : ''}
+                                    </option>
+                                  );
+                                })
                               }
                             </select>
                             {roleObj && (

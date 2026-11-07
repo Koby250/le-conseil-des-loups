@@ -5,7 +5,12 @@ import {
 import { db } from './firebase';
 import { isWolf, ALL_NIGHT_PHASES, shuffleArray } from './gameLogic';
 import { getRole } from './rolesData';
-import { isBot, runBotTurnStep } from './aiBotEngine';
+import {
+  isBot,
+  runBotTurnStep,
+  reconcileCardAndRoleDuplicates,
+  areAllCardsAndRolesValidForStart,
+} from './aiBotEngine';
 
 /**
  * Calcule la liste ordonnée des phases de nuit actives selon l'état des joueurs.
@@ -124,6 +129,11 @@ export function useAutoMj(roomId, salonData, joueurs = []) {
  * Lancement automatique de la partie depuis 'en_attente'.
  */
 export async function executeStartGameAuto(roomId, salonData, joueurs = []) {
+  const hadDuplicates = await reconcileCardAndRoleDuplicates(roomId, salonData, joueurs);
+  if (hadDuplicates || !areAllCardsAndRolesValidForStart(salonData, joueurs)) {
+    return null;
+  }
+
   const phases = computeNightPhasesAuto(joueurs);
   const firstPhase = phases[0] || 'nuit_loups';
 
@@ -844,12 +854,15 @@ export async function runAutoMjStep(roomId, salonData, joueurs = []) {
     }
   }
 
-  // 1. EN ATTENTE : Lancement automatique dès que tout le monde est prêt
+  // 1. EN ATTENTE : Lancement automatique dès que tout le monde est prêt et sans doublon
   if (statut === 'en_attente') {
+    const hadDuplicates = await reconcileCardAndRoleDuplicates(roomId, salonData, joueurs);
+    if (hadDuplicates) {
+      return 'Correction automatique des doublons de cartes en cours...';
+    }
     const targetRoles = salonData.roles_selectionnes || [];
     if (targetRoles.length > 0 && joueurs.length >= targetRoles.length) {
-      const allPicked = joueurs.every(j => j.carte_choisie !== null && j.carte_choisie !== undefined);
-      if (allPicked && elapsedSec >= 3) {
+      if (areAllCardsAndRolesValidForStart(salonData, joueurs) && elapsedSec >= 3) {
         return await executeStartGameAuto(roomId, salonData, joueurs);
       }
     }

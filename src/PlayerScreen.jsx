@@ -20,6 +20,7 @@ import {
   RoleChangeProposalModal,
 } from './GameChats';
 import { useAutoMj, executeNextNightAuto } from './autoMjEngine';
+import { reconcileCardAndRoleDuplicates, isBot } from './aiBotEngine';
 import {
   AlertTriangle, EyeOff, Eye, User, Send, Lock, Unlock,
   Heart, HeartCrack, PawPrint, ShieldCheck, FlaskConical,
@@ -404,6 +405,15 @@ export default function PlayerScreen() {
   // ── Boucle de Maître du Jeu Automatisé ───────────────────────────────────────
   useAutoMj(roomId, salonData, joueurs);
 
+  // ── Garde d'intégrité anti-doublon des cartes et rôles en salle d'attente ────
+  useEffect(() => {
+    if (!roomId || salonData?.statut !== 'en_attente' || joueurs.length === 0) return;
+    const timer = setTimeout(() => {
+      reconcileCardAndRoleDuplicates(roomId, salonData, joueurs).catch(console.error);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [roomId, salonData, joueurs]);
+
   // ── Abonnements Firestore ───────────────────────────────────────────────────
   useEffect(() => {
     if (!roomId) return;
@@ -488,26 +498,50 @@ export default function PlayerScreen() {
     e.preventDefault();
     if (!playerName.trim()) return;
 
+    const stableId = 'joueur_' + roomId + '_' + playerName.trim().toLowerCase().replace(/\s+/g, '_');
+    if (joueurs.find(j => j.nom.toLowerCase() === playerName.trim().toLowerCase() && j.id !== stableId))
+      return alert('Pseudo déjà pris !');
+
     // Gestion de la capacité du salon : un vrai joueur peut remplacer un bot IA
+    let replacedBotId = null;
     if (salonData && Array.isArray(salonData.roles_selectionnes) && joueurs.length >= salonData.roles_selectionnes.length) {
-      const botToReplace = joueurs.find(j => j.est_bot === true || String(j.nom || '').endsWith('(IA)'));
+      const botToReplace = joueurs.find(j => isBot(j));
       if (botToReplace) {
-        try {
-          await deleteDoc(doc(db, 'salons', roomId, 'joueurs', botToReplace.id));
-        } catch (delErr) {
-          console.error('Erreur remplacement bot:', delErr);
-        }
+        replacedBotId = botToReplace.id;
       } else {
         return setError('Salon complet (toutes les places sont occupées par de vrais joueurs).');
       }
     }
 
-    const stableId = 'joueur_' + roomId + '_' + playerName.trim().toLowerCase().replace(/\s+/g, '_');
-    if (joueurs.find(j => j.nom.toLowerCase() === playerName.trim().toLowerCase() && j.id !== stableId))
-      return alert('Pseudo déjà pris !');
-
     try {
-      await setDoc(doc(db, 'salons', roomId, 'joueurs', stableId), {
+      const batch = writeBatch(db);
+      if (replacedBotId) {
+        batch.delete(doc(db, 'salons', roomId, 'joueurs', replacedBotId));
+      }
+
+      // En salle d'attente aléatoire, libérer les cartes déjà tirées par les bots pour que le joueur humain
+      // puisse choisir librement n'importe quel numéro disponible (les bots tireront après lui).
+      if (salonData?.statut === 'en_attente' && salonData.distribution_mode !== 'manuelle') {
+        const remainingHumansPicks = {};
+        joueurs.forEach(j => {
+          if (j.id === replacedBotId || j.id === stableId) return;
+          if (isBot(j) && j.carte_choisie !== null) {
+            batch.update(doc(db, 'salons', roomId, 'joueurs', j.id), {
+              carte_choisie: null,
+              role: '',
+              vies: 1,
+              infection_dispo: false,
+            });
+          } else if (!isBot(j) && j.carte_choisie !== null && j.carte_choisie !== undefined && j.carte_choisie !== 999) {
+            remainingHumansPicks[String(j.carte_choisie)] = j.id;
+          }
+        });
+        batch.update(doc(db, 'salons', roomId), {
+          cartes_prises: remainingHumansPicks,
+        });
+      }
+
+      batch.set(doc(db, 'salons', roomId, 'joueurs', stableId), {
         nom: playerName.trim(),
         carte_choisie: null,
         role: '',
@@ -522,7 +556,7 @@ export default function PlayerScreen() {
         dernier_protege: null,
         potion_vie_utilisee: false,
         potion_mort_utilisee: false,
-        vies: 2,
+        vies: 1,
         infection_dispo: false,
         infection_repondu: false,
         tir_chasseur_fait: false,
@@ -538,7 +572,9 @@ export default function PlayerScreen() {
         pouvoirs_perdus_ancien: false,
         ancien_role: null,
         proposition_role: null,
+        conflit_carte_msg: null,
       });
+      await batch.commit();
       localStorage.setItem(`loup_garou_${roomId}_playerId`, stableId);
       setPlayerId(stableId);
       setIsJoined(true);
@@ -549,17 +585,77 @@ export default function PlayerScreen() {
 
   const handlePickCard = async index => {
     if (!salonData || !me) return;
-    if (joueurs.some(j => j.carte_choisie === index)) return alert('Carte déjà prise !');
-    const assignedRole = salonData.roles_melanges[index];
     try {
-      await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
-        carte_choisie: index,
-        role: assignedRole,
-        vies: assignedRole === 'ancien' ? 2 : 1,
-        infection_dispo: assignedRole === 'infect-pere-des-loups' || assignedRole === 'pere-des-loups',
+      await runTransaction(db, async transaction => {
+        const salonRef = doc(db, 'salons', roomId);
+        const meRef = doc(db, 'salons', roomId, 'joueurs', me.id);
+        const salonSnap = await transaction.get(salonRef);
+        if (!salonSnap.exists()) throw new Error('SALON_INTROUVABLE');
+
+        const freshSalon = salonSnap.data();
+        const rolesMelanges = Array.isArray(freshSalon.roles_melanges) ? freshSalon.roles_melanges : [];
+        if (index < 0 || index >= rolesMelanges.length) {
+          throw new Error('CARTE_INVALIDE');
+        }
+
+        const cartesPrises = { ...(freshSalon.cartes_prises || {}) };
+        const recordedOwnerId = cartesPrises[String(index)];
+        const otherPlayersOnCard = joueurs.filter(j => j.id !== me.id && Number(j.carte_choisie) === Number(index));
+        const humanOnCard = otherPlayersOnCard.find(j => !isBot(j));
+
+        if (
+          (recordedOwnerId && recordedOwnerId !== me.id && !String(recordedOwnerId).startsWith('bot_')) ||
+          humanOnCard
+        ) {
+          throw new Error('CARTE_DEJA_PRISE');
+        }
+
+        // Si un Bot IA occupait cette carte, on l'évince pour donner la priorité au joueur humain
+        const botIdsToEvict = new Set(otherPlayersOnCard.filter(j => isBot(j)).map(j => j.id));
+        if (recordedOwnerId && String(recordedOwnerId).startsWith('bot_')) {
+          botIdsToEvict.add(recordedOwnerId);
+        }
+        for (const botId of botIdsToEvict) {
+          transaction.update(doc(db, 'salons', roomId, 'joueurs', botId), {
+            carte_choisie: null,
+            role: '',
+            vies: 1,
+            infection_dispo: false,
+          });
+        }
+
+        // Nettoyer toute ancienne carte éventuellement associée à `me.id`
+        for (const [k, v] of Object.entries(cartesPrises)) {
+          if (v === me.id) delete cartesPrises[k];
+        }
+        cartesPrises[String(index)] = me.id;
+
+        const assignedRole = rolesMelanges[index];
+        transaction.update(salonRef, { cartes_prises: cartesPrises });
+        transaction.update(meRef, {
+          carte_choisie: index,
+          role: assignedRole,
+          vies: assignedRole === 'ancien' ? 2 : 1,
+          infection_dispo: assignedRole === 'infect-pere-des-loups' || assignedRole === 'pere-des-loups',
+          conflit_carte_msg: null,
+        });
       });
-    } catch {
-      alert('Erreur lors du tirage de la carte.');
+    } catch (err) {
+      if (err?.message === 'CARTE_DEJA_PRISE') {
+        try {
+          await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
+            carte_choisie: null,
+            role: '',
+            vies: 1,
+            infection_dispo: false,
+            conflit_carte_msg: `La carte #${index + 1} vient d'être choisie simultanément par un autre joueur ! Veuillez sélectionner un autre numéro de carte.`,
+          });
+        } catch (e) {
+          console.error(e);
+        }
+      } else {
+        alert('Erreur lors du tirage de la carte.');
+      }
     }
   };
 
@@ -796,9 +892,16 @@ export default function PlayerScreen() {
     if (me.carte_choisie === null && salonData.distribution_mode !== 'manuelle') {
       const totalRoles = salonData.roles_selectionnes.length;
       const allCards   = Array.from({ length: totalRoles }, (_, i) => i);
-      const takenCards = joueurs
-        .filter(j => j.carte_choisie !== null && j.carte_choisie !== 999)
-        .map(j => j.carte_choisie);
+      const cartesPrisesMap = salonData.cartes_prises || {};
+      const takenByMap = Object.entries(cartesPrisesMap)
+        .filter(([, ownerId]) => ownerId && !String(ownerId).startsWith('bot_'))
+        .map(([idx]) => Number(idx));
+      const takenCards = new Set([
+        ...joueurs
+          .filter(j => j.carte_choisie !== null && j.carte_choisie !== 999)
+          .map(j => Number(j.carte_choisie)),
+        ...takenByMap,
+      ]);
       return (
         <div className="player-screen">
           <ThemeToggle />
@@ -812,10 +915,31 @@ export default function PlayerScreen() {
               <p className="text-font text-muted" style={{ fontSize: '0.92rem', marginBottom: '1.25rem' }}>
                 Touchez une carte scellée pour tirer votre rôle secret.
               </p>
+              {me.conflit_carte_msg && (
+                <div
+                  style={{
+                    marginBottom: '1rem',
+                    padding: '0.85rem 1rem',
+                    borderRadius: '12px',
+                    background: 'rgba(239, 68, 68, 0.18)',
+                    border: '1.5px solid #ef4444',
+                    color: '#fca5a5',
+                    fontSize: '0.86rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    textAlign: 'left',
+                  }}
+                >
+                  <AlertTriangle size={18} style={{ color: '#ef4444', flexShrink: 0 }} />
+                  <span>{me.conflit_carte_msg}</span>
+                </div>
+              )}
             </div>
             <div className="mystery-cards-grid">
               {allCards.map(index => {
-                if (takenCards.includes(index)) return null;
+                if (takenCards.has(index)) return null;
                 return (
                   <button
                     key={index}
