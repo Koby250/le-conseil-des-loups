@@ -1342,7 +1342,7 @@ export default function PlayerScreen() {
           )}
 
           {/* Chat des accusations en lecture seule pour les fantômes */}
-          {salonData.statut === 'jour_accusation' && (
+          {(salonData.statut === 'matin' || salonData.statut === 'jour_accusation') && (
             <div style={{ marginBottom: '1rem' }}>
               <AccusationsChat
                 roomId={roomId}
@@ -1538,12 +1538,12 @@ export default function PlayerScreen() {
               </div>
             )}
 
-            {/* Carte collectionnable du rôle */}
+            {/* Carte collectionnable du rôle (compacte le jour pour laisser le Chat et les votes bien visibles en haut) */}
             {myRoleData && (
               <RoleCardView
                 role={myRoleData}
                 onOpenDetails={r => setInspectRole(r)}
-                compact={false}
+                compact={['matin', 'jour_accusation', 'jour_defense', 'jour_vote'].includes(salonData?.statut)}
               />
             )}
 
@@ -2677,9 +2677,15 @@ export default function PlayerScreen() {
             </div>
             <div style={{ padding: '1.15rem 1.25rem', background: 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(15,23,42,0.6))', border: '1.5px solid rgba(245,158,11,0.4)', borderRadius: '14px', marginBottom: '1rem' }}>
               <p className="text-font" style={{ fontSize: '0.92rem', color: 'var(--text-color)', lineHeight: 1.5, margin: 0 }}>
-                La nuit est terminée, le soleil se lève sur le village. Prenez connaissance des événements nocturnes et des victimes ci-dessous avant l'ouverture des accusations.
+                La nuit est terminée, le soleil se lève sur le village. Vous pouvez déjà échanger vos premières impressions dans le <strong>Chat des Accusations</strong> ci-dessous.
               </p>
             </div>
+            <AccusationsChat
+              roomId={roomId}
+              salonData={salonData}
+              senderName={me.nom}
+              isDead={false}
+            />
           </div>
         )}
 
@@ -2813,6 +2819,16 @@ export default function PlayerScreen() {
                 phaseStartedAt={salonData.phase_started_at}
                 durationSec={salonData.duree_accusation !== undefined ? salonData.duree_accusation : 60}
                 label="Temps d'accusation"
+              />
+            </div>
+
+            {/* Chat des accusations placé en tout premier pour débattre avant d'accuser */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <AccusationsChat
+                roomId={roomId}
+                salonData={salonData}
+                senderName={me.nom}
+                isDead={false}
               />
             </div>
 
@@ -3037,16 +3053,6 @@ export default function PlayerScreen() {
                 </div>
               );
             })()}
-
-            {/* Chat des accusations (Débats & Arguments de la Place Publique) */}
-            <div style={{ marginTop: '1.25rem' }}>
-              <AccusationsChat
-                roomId={roomId}
-                salonData={salonData}
-                senderName={me.nom}
-                isDead={false}
-              />
-            </div>
           </div>
         )}
 

@@ -945,7 +945,6 @@ export default function MjDashboard() {
       await updateDoc(doc(db, 'salons', roomId), {
         statut: 'jour_accusation',
         la_liste_accuses: [],
-        chat_accusation: [],
         votes: {},
         phase_started_at: Date.now(),
         auto_mj_phase_started_at: Date.now(),
@@ -2289,6 +2288,15 @@ export default function MjDashboard() {
               )}
             </ul>
 
+            <div style={{ marginBottom: '1.25rem' }}>
+              <AccusationsChat
+                roomId={roomId}
+                salonData={salonData}
+                senderName="Maître du Jeu"
+                isMj={true}
+              />
+            </div>
+
             <button
               onClick={salonData.morts_nuit_details ? handleOpenAccusations : handleApplyNightDeaths}
               className="btn-primary title-font glow-button"
@@ -2354,6 +2362,16 @@ export default function MjDashboard() {
                   />
                 </div>
 
+                {/* Chat des accusations (Débats du village) placé en haut */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <AccusationsChat
+                    roomId={roomId}
+                    salonData={salonData}
+                    senderName="Maître du Jeu"
+                    isMj={true}
+                  />
+                </div>
+
                 <p className="text-font text-muted" style={{ fontSize: '0.86rem', marginBottom: '1rem' }}>
                   Les villageois (et IA) désignent les suspects à traduire au tribunal. Les joueurs ayant reçu au moins 1 accusation passeront en phase de défense.
                 </p>
@@ -2393,16 +2411,6 @@ export default function MjDashboard() {
                     );
                   })}
                 </ul>
-
-                {/* Chat des accusations (Débats du village) */}
-                <div style={{ marginBottom: '1.25rem' }}>
-                  <AccusationsChat
-                    roomId={roomId}
-                    salonData={salonData}
-                    senderName="Maître du Jeu"
-                    isMj={true}
-                  />
-                </div>
 
                 <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
                   <button

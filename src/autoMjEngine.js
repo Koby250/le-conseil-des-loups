@@ -392,7 +392,6 @@ export async function executeOpenAccusationsFromMatinAuto(roomId, salonData) {
     statut: 'jour_accusation',
     la_liste_accuses: [],
     votes: {},
-    chat_accusation: [],
     phase_started_at: Date.now(),
     auto_mj_phase_started_at: Date.now(),
     auto_mj_last_tick: Date.now(),

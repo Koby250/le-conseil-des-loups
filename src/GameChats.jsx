@@ -208,11 +208,11 @@ export function AccusationsChat({ roomId, salonData, senderName, isMj = false, i
             <Megaphone size={16} style={{ color: '#ef4444' }} />
           </div>
           <div>
-            <h4 className="title-font" style={{ margin: 0, color: '#ef4444', fontSize: '0.96rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Place Publique — Débats & Accusations
+            <h4 className="title-font" style={{ margin: 0, color: '#ef4444', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              Chat des Accusations — Place Publique
             </h4>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              Échangez vos soupçons et donnez vos arguments pour inciter le village à accuser
+            <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+              Discutez et donnez vos arguments avant d'accuser un ou plusieurs joueurs
             </span>
           </div>
         </div>
@@ -227,7 +227,7 @@ export function AccusationsChat({ roomId, salonData, senderName, isMj = false, i
             letterSpacing: '0.4px',
           }}
         >
-          PHASE 1 · ACCUSATIONS
+          CHAT ACCUSATIONS ({messages.length})
         </span>
       </div>
 
