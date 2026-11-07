@@ -1103,12 +1103,30 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
       for (const bot of botsReadyToAccuse) {
         const otherAlive = allAlive.filter(j => j.nom !== bot.nom);
         if (otherAlive.length > 0) {
-          // 85% du temps accuse un suspect, 15% n'accuse personne
           const seed = getBotActionDelay(bot.nom, 'accuse_choice', dayNumber, 1, 100);
           if (seed <= 15) {
             newVotesUpdates[`votes.${bot.nom}`] = 'Personne';
           } else {
-            const target = otherAlive[Math.floor((seed / 100) * otherAlive.length) % otherAlive.length].nom;
+            let candidatePool = otherAlive;
+
+            if (isWolf(bot) && bot.role !== 'loup-blanc') {
+              // Les loups normaux ne savent pas lequel des loups de la meute est le Loup Blanc.
+              // En temps normal, ils protègent la meute et accusent les villageois.
+              // Mais si le Loup Blanc a frappé un loup la nuit (ou dès le Jour 2 s'ils soupçonnent un traître),
+              // leur stratégie peut les pousser à accuser un autre loup au hasard pour tenter d'éliminer le Loup Blanc au vote !
+              const nonWolves = otherAlive.filter(j => !isWolf(j));
+              const packMates = otherAlive.filter(j => isWolf(j));
+              const traitorSuspected = Boolean(salonData.loup_blanc_a_frappe || salonData.morts_nuit?.loup_blanc);
+              const huntTraitorRoll = getBotActionDelay(bot.nom, 'wolf_hunt_traitor', dayNumber, 1, 100);
+
+              if (traitorSuspected && packMates.length > 0 && huntTraitorRoll <= 45) {
+                candidatePool = packMates;
+              } else if (nonWolves.length > 0) {
+                candidatePool = nonWolves;
+              }
+            }
+
+            const target = candidatePool[Math.floor((seed / 100) * candidatePool.length) % candidatePool.length].nom;
             newVotesUpdates[`votes.${bot.nom}`] = target;
 
             // Dépose un argument persuasif dans le chat d'accusations (limité à 3 messages bots pour garder le chat lisible)
@@ -1227,9 +1245,29 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
 
     if (botsReadyToVote.length > 0) {
       const newVotesUpdates = {};
+      const traitorSuspected = Boolean(salonData.loup_blanc_a_frappe || salonData.morts_nuit?.loup_blanc);
       for (const bot of botsReadyToVote) {
         let choices = accusedList.filter(n => n !== bot.nom);
         if (choices.length === 0) choices = accusedList;
+
+        if (isWolf(bot) && bot.role !== 'loup-blanc' && choices.length > 1) {
+          const nonWolfAccused = choices.filter(nom => {
+            const p = joueurs.find(j => j.nom === nom);
+            return p && !isWolf(p);
+          });
+          const wolfAccused = choices.filter(nom => {
+            const p = joueurs.find(j => j.nom === nom);
+            return p && isWolf(p);
+          });
+          const huntTraitorRoll = getBotActionDelay(bot.nom, 'vote_traitor', dayNumber, 1, 100);
+          // Si un traître Loup Blanc est soupçonné dans la meute, les loups peuvent voter contre un loup accusé
+          if (traitorSuspected && wolfAccused.length > 0 && huntTraitorRoll <= 55) {
+            choices = wolfAccused;
+          } else if (nonWolfAccused.length > 0) {
+            choices = nonWolfAccused;
+          }
+        }
+
         const seed = getBotActionDelay(bot.nom, 'vote_target', dayNumber, 0, choices.length * 10);
         const target = choices[Math.floor(seed) % choices.length];
         newVotesUpdates[`votes.${bot.nom}`] = target;

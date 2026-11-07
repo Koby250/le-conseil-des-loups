@@ -10,7 +10,7 @@ import { db } from './firebase';
 import { rolesData, getRole } from './rolesData';
 import {
   isWolf, ALL_NIGHT_PHASES, DAY_PHASES,
-  phaseLabel, stripEmoji, notifRoleId, shuffleArray,
+  phaseLabel, stripEmoji, notifRoleId, shuffleArray, isLoupBlancWakeNight,
 } from './gameLogic';
 import {
   RoleIcon, RoleMedallion, RoleChip,
@@ -35,10 +35,10 @@ import {
 import ThemeToggle from './ThemeToggle';
 
 /**
- * Calcule la liste ordonnée des phases de nuit actives en fonction de l'état des joueurs.
- * Les phases dont le rôle est absent ou épuisé sont automatiquement ignorées.
+ * Calcule la liste ordonnée des phases de nuit actives en fonction de l'état des joueurs
+ * et du numéro de la nuit (le Loup Blanc ne se réveille seul qu'une nuit sur deux : Nuit 2, 4, 6...).
  */
-function computeNightPhases(joueurs) {
+function computeNightPhases(joueurs, numeroJour = 1) {
   const alive = joueurs.filter(j => j.statut_joueur !== 'mort');
   const phases = [];
 
@@ -50,7 +50,7 @@ function computeNightPhases(joueurs) {
     phases.push('nuit_voyante');
   if (alive.some(j => isWolf(j)))
     phases.push('nuit_loups');
-  if (alive.some(j => j.role === 'loup-blanc'))
+  if (isLoupBlancWakeNight(numeroJour) && alive.some(j => j.role === 'loup-blanc'))
     phases.push('nuit_loup_blanc');
   if (alive.some(j => j.role === 'sorciere'))
     phases.push('nuit_sorciere');
@@ -60,8 +60,8 @@ function computeNightPhases(joueurs) {
   return phases.length > 0 ? phases : ['nuit_loups'];
 }
 
-function getNextNightPhase(currentPhase, joueurs) {
-  const phases = computeNightPhases(joueurs);
+function getNextNightPhase(currentPhase, joueurs, numeroJour = 1) {
+  const phases = computeNightPhases(joueurs, numeroJour);
   const currentIndex = ALL_NIGHT_PHASES.indexOf(currentPhase);
   if (currentIndex === -1) return 'matin';
   for (let i = currentIndex + 1; i < ALL_NIGHT_PHASES.length; i++) {
@@ -665,7 +665,7 @@ export default function MjDashboard() {
       }
     }
 
-    const phases = computeNightPhases(joueurs);
+    const phases = computeNightPhases(joueurs, salonData.numero_jour || 1);
     const firstPhase = phases[0] || 'nuit_loups';
     try {
       await updateDoc(doc(db, 'salons', roomId), { statut: firstPhase });
@@ -679,7 +679,7 @@ export default function MjDashboard() {
    * Avance à la prochaine phase de nuit valide, ou vers 'matin'.
    */
   const handleNextPhase = async () => {
-    const next = getNextNightPhase(salonData.statut, joueurs);
+    const next = getNextNightPhase(salonData.statut, joueurs, salonData.numero_jour || 1);
     const updates = { statut: next };
 
     if (salonData.statut === 'nuit_loups' && salonData.victime_loups) {
@@ -917,6 +917,7 @@ export default function MjDashboard() {
             chagrin:    chagrinNom,
           },
           morts_nuit_details: mortsNuitDetails,
+          loup_blanc_a_frappe: Boolean(diedFromLoupBlanc || salonData.loup_blanc_a_frappe),
           infection_active: false,
           notif_mj: notifMj,
           la_liste_accuses: [],
@@ -1311,8 +1312,7 @@ export default function MjDashboard() {
   const handleNextNight = async () => {
     try {
       const batch = writeBatch(db);
-      const phases     = computeNightPhases(joueurs);
-      const firstPhase = phases[0] || 'nuit_loups';
+      const nextNumeroJour = (salonData.numero_jour || 1) + 1;
 
       let veninVictim = null;
       let veninNotif  = null;
@@ -1333,9 +1333,15 @@ export default function MjDashboard() {
         }
       }
 
+      const joueursAfterVenin = veninVictim
+        ? joueurs.map(j => j.id === veninVictim.id ? { ...j, statut_joueur: 'mort' } : j)
+        : joueurs;
+      const phases     = computeNightPhases(joueursAfterVenin, nextNumeroJour);
+      const firstPhase = phases[0] || 'nuit_loups';
+
       batch.update(doc(db, 'salons', roomId), {
         statut: firstPhase,
-        numero_jour: (salonData.numero_jour || 1) + 1,
+        numero_jour: nextNumeroJour,
         victime_loups: null,
         victime_loups_visible_sorciere: null,
         victime_sauvee: false,
@@ -1410,6 +1416,7 @@ export default function MjDashboard() {
         illusion_active: false,
         infection_active: false,
         malediction_ancien_active: false,
+        loup_blanc_a_frappe: false,
         la_liste_accuses: [],
         votes: {},
         chat_loups: [],
@@ -1768,7 +1775,7 @@ export default function MjDashboard() {
   const isNightPhase  = ALL_NIGHT_PHASES.includes(salonData.statut);
   const isGameRunning = salonData.statut !== 'en_attente';
 
-  const nightPhaseSequence = computeNightPhases(joueurs);
+  const nightPhaseSequence = computeNightPhases(joueurs, salonData.numero_jour || 1);
   const infectPere         = joueurs.find(j => (j.role === 'infect-pere-des-loups' || j.role === 'pere-des-loups') && j.statut_joueur !== 'mort');
   const chasseurActif      = joueurs.find(j => j.role === 'chasseur' && j.statut_joueur === 'mort' && j.tir_chasseur_fait === false);
 

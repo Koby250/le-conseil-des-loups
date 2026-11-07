@@ -24,6 +24,12 @@ export function isWolf(player) {
 /** Un rôle (id) appartient-il à la meute par défaut ? */
 export const isWolfRole = roleId => WOLF_ROLES.includes(roleId);
 
+/** Le Loup-Garou Blanc se réveille seul une nuit sur deux (Nuit 2, Nuit 4, Nuit 6...). */
+export function isLoupBlancWakeNight(numeroJour = 1) {
+  const n = Number(numeroJour) || 1;
+  return n >= 2 && n % 2 === 0;
+}
+
 export const isAlive = player => !!player && player.statut_joueur !== 'mort';
 
 /** Ordre officiel des phases de nuit gérées automatiquement. */

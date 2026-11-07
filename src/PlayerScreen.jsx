@@ -7,7 +7,7 @@ import {
 
 import { db } from './firebase';
 import { rolesData, getRole } from './rolesData';
-import { isWolf, ALL_NIGHT_PHASES, DAY_PHASES, phaseLabel } from './gameLogic';
+import { isWolf, ALL_NIGHT_PHASES, DAY_PHASES, phaseLabel, isLoupBlancWakeNight } from './gameLogic';
 import {
   RoleIcon, RoleMedallion, CampBadge, RoleChip,
   RoleCardView, RoleDetailsModal, GrimoireModal, PhaseTimer,
@@ -1638,10 +1638,31 @@ export default function PlayerScreen() {
 
                 {me.role === 'loup-blanc' && (
                   <div style={{ marginBottom: '10px', padding: '8px 10px', background: 'rgba(241,245,249,0.1)', border: '1px solid rgba(241,245,249,0.25)', borderRadius: '8px', fontSize: '0.82rem', color: '#e2e8f0' }}>
-                    <span style={{ fontWeight: 700 }}>Rôle spécial : Loup-Garou Blanc</span>
-                    <p style={{ margin: '3px 0 0', opacity: 0.9 }}>
-                      Vous chassez la nuit avec la meute ci-dessous. Immédiatement après, vous vous réveillez seul en secret pour éliminer l'un d'eux afin de remporter la victoire solitaire !
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                      <span style={{ fontWeight: 700 }}>Rôle spécial : Loup-Garou Blanc (Incognito)</span>
+                      <span style={{
+                        fontSize: '0.72rem',
+                        padding: '2px 7px',
+                        borderRadius: '6px',
+                        fontWeight: 700,
+                        background: isLoupBlancWakeNight(salonData?.numero_jour || 1) ? 'rgba(16,185,129,0.2)' : 'rgba(148,163,184,0.2)',
+                        color: isLoupBlancWakeNight(salonData?.numero_jour || 1) ? '#34d399' : '#cbd5e1',
+                        border: isLoupBlancWakeNight(salonData?.numero_jour || 1) ? '1px solid rgba(16,185,129,0.4)' : '1px solid rgba(148,163,184,0.3)',
+                      }}>
+                        {isLoupBlancWakeNight(salonData?.numero_jour || 1)
+                          ? `Nuit ${salonData?.numero_jour || 1} : Réveil solitaire actif`
+                          : `Nuit ${salonData?.numero_jour || 1} : Chasse en meute uniquement (réveil solitaire Nuit ${(salonData?.numero_jour || 1) + 1})`}
+                      </span>
+                    </div>
+                    <p style={{ margin: '4px 0 0', opacity: 0.9, lineHeight: 1.4 }}>
+                      Vous savez qui sont les loups, mais eux vous voient comme un simple <strong>Loup-Garou</strong> et ignorent qui est le Loup Blanc. Une nuit sur deux (Nuit 2, 4, 6…), vous êtes appelé seul après la meute pour dévorer un loup en secret !
                     </p>
+                  </div>
+                )}
+
+                {me.role !== 'loup-blanc' && (salonData?.loup_blanc_a_frappe || salonData?.morts_nuit?.loup_blanc) && (
+                  <div style={{ marginBottom: '10px', padding: '8px 10px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '8px', fontSize: '0.8rem', color: '#fcd34d', lineHeight: 1.4 }}>
+                    <span style={{ fontWeight: 700 }}>Traître dans la meute :</span> Le Loup-Garou Blanc se cache parmi vous sous l'apparence d'un simple Loup-Garou ! Démasquez-le et éliminez-le pendant la journée lors du vote du village.
                   </div>
                 )}
 
@@ -1664,8 +1685,12 @@ export default function PlayerScreen() {
                   {/* Les autres membres de la meute */}
                   {allPackMembers.length > 0 ? (
                     allPackMembers.map(j => {
-                      const rObj = getRole(j.role);
                       const isMort = j.statut_joueur === 'mort';
+                      // Les autres loups ne savent pas qui est le Loup Blanc : tant qu'il est en vie, il leur apparaît comme un simple Loup-Garou
+                      const displayedRoleId = (j.role === 'loup-blanc' && me.role !== 'loup-blanc' && !isMort)
+                        ? 'loup-garou'
+                        : j.role;
+                      const rObj = getRole(displayedRoleId);
                       return (
                         <div
                           key={j.id}
@@ -2042,7 +2067,7 @@ export default function PlayerScreen() {
                   </span>
                   {compagnonsLoupsVivants.map(c => (
                     <span key={c.id} style={{ fontSize: '0.78rem', background: 'rgba(239,68,68,0.2)', color: '#fca5a5', padding: '2px 8px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.35)' }}>
-                      {c.nom} {c.role === 'loup-blanc' ? '(Loup Blanc)' : ''}
+                      {c.nom}
                     </span>
                   ))}
                 </div>

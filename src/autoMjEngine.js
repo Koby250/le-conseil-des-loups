@@ -3,7 +3,7 @@ import {
   doc, updateDoc, writeBatch, runTransaction, arrayUnion,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { isWolf, ALL_NIGHT_PHASES, shuffleArray } from './gameLogic';
+import { isWolf, ALL_NIGHT_PHASES, shuffleArray, isLoupBlancWakeNight } from './gameLogic';
 import { getRole } from './rolesData';
 import {
   isBot,
@@ -13,9 +13,10 @@ import {
 } from './aiBotEngine';
 
 /**
- * Calcule la liste ordonnée des phases de nuit actives selon l'état des joueurs.
+ * Calcule la liste ordonnée des phases de nuit actives selon l'état des joueurs
+ * et le numéro de la nuit (le Loup Blanc ne se réveille seul qu'une nuit sur deux : Nuit 2, 4, 6...).
  */
-export function computeNightPhasesAuto(joueurs = []) {
+export function computeNightPhasesAuto(joueurs = [], numeroJour = 1) {
   const alive = joueurs.filter(j => j.statut_joueur !== 'mort');
   const phases = [];
 
@@ -27,7 +28,7 @@ export function computeNightPhasesAuto(joueurs = []) {
     phases.push('nuit_voyante');
   if (alive.some(j => isWolf(j)))
     phases.push('nuit_loups');
-  if (alive.some(j => j.role === 'loup-blanc'))
+  if (isLoupBlancWakeNight(numeroJour) && alive.some(j => j.role === 'loup-blanc'))
     phases.push('nuit_loup_blanc');
   if (alive.some(j => j.role === 'sorciere' && (!j.potion_vie_utilisee || !j.potion_mort_utilisee)))
     phases.push('nuit_sorciere');
@@ -40,8 +41,8 @@ export function computeNightPhasesAuto(joueurs = []) {
 /**
  * Calcule la phase nocturne suivante ou renvoie 'matin'.
  */
-export function getNextNightPhaseAuto(currentPhase, joueurs = []) {
-  const phases = computeNightPhasesAuto(joueurs);
+export function getNextNightPhaseAuto(currentPhase, joueurs = [], numeroJour = 1) {
+  const phases = computeNightPhasesAuto(joueurs, numeroJour);
   const currentIndex = ALL_NIGHT_PHASES.indexOf(currentPhase);
   if (currentIndex === -1) return 'matin';
 
@@ -134,7 +135,7 @@ export async function executeStartGameAuto(roomId, salonData, joueurs = []) {
     return null;
   }
 
-  const phases = computeNightPhasesAuto(joueurs);
+  const phases = computeNightPhasesAuto(joueurs, salonData.numero_jour || 1);
   const firstPhase = phases[0] || 'nuit_loups';
 
   await updateDoc(doc(db, 'salons', roomId), {
@@ -150,7 +151,7 @@ export async function executeStartGameAuto(roomId, salonData, joueurs = []) {
  * Avance vers la phase de nuit suivante ou résout les morts pour ouvrir le matin.
  */
 export async function executeNextNightPhaseAuto(roomId, salonData, joueurs = []) {
-  const next = getNextNightPhaseAuto(salonData.statut, joueurs);
+  const next = getNextNightPhaseAuto(salonData.statut, joueurs, salonData.numero_jour || 1);
 
   if (next === 'matin') {
     // La séquence nocturne est terminée : résolution des événements et lever du soleil
@@ -360,6 +361,7 @@ export async function executeApplyNightDeathsAuto(roomId, salonData, joueurs = [
           chagrin:    chagrinNom,
         },
         morts_nuit_details: mortsDetails,
+        loup_blanc_a_frappe: Boolean(diedFromLoupBlanc || salonData.loup_blanc_a_frappe),
         infection_active: false,
         notif_mj: notifMj,
         la_liste_accuses: [],
@@ -748,8 +750,7 @@ export async function executeApplyDaySentenceAuto(roomId, salonData, joueurs = [
 export async function executeNextNightAuto(roomId, salonData, joueurs = []) {
   try {
     const batch = writeBatch(db);
-    const phases = computeNightPhasesAuto(joueurs);
-    const firstPhase = phases[0] || 'nuit_loups';
+    const nextNumeroJour = (salonData.numero_jour || 1) + 1;
 
     let veninVictim = null;
     let veninNotif  = null;
@@ -770,9 +771,15 @@ export async function executeNextNightAuto(roomId, salonData, joueurs = []) {
       }
     }
 
+    const joueursAfterVenin = veninVictim
+      ? joueurs.map(j => j.id === veninVictim.id ? { ...j, statut_joueur: 'mort' } : j)
+      : joueurs;
+    const phases = computeNightPhasesAuto(joueursAfterVenin, nextNumeroJour);
+    const firstPhase = phases[0] || 'nuit_loups';
+
     batch.update(doc(db, 'salons', roomId), {
       statut: firstPhase,
-      numero_jour: (salonData.numero_jour || 1) + 1,
+      numero_jour: nextNumeroJour,
       victime_loups: null,
       victime_loups_visible_sorciere: null,
       victime_sauvee: false,
