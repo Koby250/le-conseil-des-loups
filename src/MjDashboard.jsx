@@ -1264,6 +1264,7 @@ export default function MjDashboard() {
           a_vote_loup_blanc: false,
           vote_jour: null,
           infection_repondu: false,
+          flair_nuit_utilise: false,
         });
       });
 
@@ -1335,6 +1336,9 @@ export default function MjDashboard() {
           modele_nom: null,
           enfant_devenu_loup: false,
           pouvoir_renard_perdu: false,
+          flair_nuit_utilise: false,
+          dernier_flair_nuit: null,
+          dernier_flair_resultat: null,
           proposition_role: null,
         });
       });

@@ -64,6 +64,9 @@ export function createBotPlayerObject(name, cardIndex = null, assignedRole = '')
     modele_nom: null,
     enfant_devenu_loup: false,
     pouvoir_renard_perdu: false,
+    flair_nuit_utilise: false,
+    dernier_flair_nuit: null,
+    dernier_flair_resultat: null,
     proposition_role: null,
   };
 }
@@ -318,6 +321,44 @@ export async function runBotTurnStep(roomId, salonData, joueurs = []) {
         ),
       });
       return `L'Enfant Sauvage (${enfantBot.nom}) a choisi son modèle : ${chosenModel.nom}.`;
+    }
+  }
+
+  // ── Renard Bot : flairer une seule fois dans la nuit ───────────────────────
+  const renardBot = aliveBots.find(
+    j => (j.role === 'renard' || j.role === 'renard-garou') &&
+         !j.pouvoir_renard_perdu &&
+         !j.flair_nuit_utilise &&
+         j.dernier_flair_nuit !== dayNumber
+  );
+  if (renardBot && ALL_NIGHT_PHASES.includes(salonData.statut) && alivePlayers.length >= 2) {
+    const plannedDelay = getBotActionDelay(renardBot.nom, 'renard_flair', dayNumber, 4, 9);
+    if (elapsedSec >= plannedDelay) {
+      const len = alivePlayers.length;
+      const targetIdx = Math.floor(Math.random() * len);
+      const center = alivePlayers[targetIdx];
+      const left = alivePlayers[(targetIdx - 1 + len) % len];
+      const right = alivePlayers[(targetIdx + 1) % len];
+      const trio = Array.from(new Set([left, center, right]));
+      const hasWolf = trio.some(p => isWolf(p));
+      const trioNames = trio.map(p => p.nom);
+
+      try {
+        await updateDoc(doc(db, 'salons', roomId, 'joueurs', renardBot.id), {
+          flair_nuit_utilise: true,
+          dernier_flair_nuit: dayNumber,
+          pouvoir_renard_perdu: renardBot.role === 'renard' ? !hasWolf : false,
+          dernier_flair_resultat: { trioNames, hasWolf, numero_jour: dayNumber },
+        });
+        await updateDoc(doc(db, 'salons', roomId), {
+          notifications_mj: arrayUnion(
+            `Le Renard IA (${renardBot.nom}) a flairé [${trioNames.join(', ')}] → ${hasWolf ? 'Présence de loup détectée' : 'Aucun loup (flair perdu)'}.`,
+          ),
+        });
+        return `Le Renard IA (${renardBot.nom}) a flairé ${center.nom}.`;
+      } catch (e) {
+        console.error(e);
+      }
     }
   }
 

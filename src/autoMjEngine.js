@@ -770,6 +770,7 @@ export async function executeNextNightAuto(roomId, salonData, joueurs = []) {
         a_vote_loup_blanc: false,
         vote_jour: null,
         infection_repondu: false,
+        flair_nuit_utilise: false,
       });
     });
 

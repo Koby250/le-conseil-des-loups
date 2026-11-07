@@ -509,6 +509,9 @@ export default function PlayerScreen() {
         modele_nom: null,
         enfant_devenu_loup: false,
         pouvoir_renard_perdu: false,
+        flair_nuit_utilise: false,
+        dernier_flair_nuit: null,
+        dernier_flair_resultat: null,
         proposition_role: null,
       });
       localStorage.setItem(`loup_garou_${roomId}_playerId`, stableId);
@@ -2260,65 +2263,151 @@ export default function PlayerScreen() {
             </div>
           )}
 
-          {/* RENARD / RENARD-GAROU (pendant la nuit) */}
-          {isNightMode && (me.role === 'renard' || me.role === 'renard-garou') && !me.pouvoir_renard_perdu && !me.a_vote && (
-            <div style={{ padding: '1.15rem', background: 'rgba(249,115,22,0.1)', border: '1.5px solid #f97316', borderRadius: '12px', marginBottom: '1rem' }}>
-              <h3 className="title-font" style={{ color: '#f97316', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.05rem', marginBottom: '0.4rem' }}>
-                <ScanSearch size={20} /> Flair du Renard
-              </h3>
-              {renardResult ? (
-                <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
-                  <p className="text-font" style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-                    Trio flairé : <strong>{renardResult.trioNames.join(', ')}</strong>
+          {/* RENARD / RENARD-GAROU (pendant la nuit : 1 seul flair par nuit entière) */}
+          {isNightMode && (me.role === 'renard' || me.role === 'renard-garou') && (() => {
+            const currentDayNum = salonData?.numero_jour || 1;
+            const hasFlairedTonight = Boolean(me.flair_nuit_utilise) || (me.dernier_flair_nuit != null && me.dernier_flair_nuit === currentDayNum);
+            const activeResult = (me.dernier_flair_resultat?.numero_jour === currentDayNum ? me.dernier_flair_resultat : null) || renardResult;
+
+            if (me.pouvoir_renard_perdu) {
+              return (
+                <div style={{ padding: '1rem', background: 'rgba(239,68,68,0.08)', border: '1px dashed #ef4444', borderRadius: '12px', marginBottom: '1rem' }}>
+                  <p className="title-font" style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.98rem', margin: '0 0 4px' }}>
+                    <ScanSearch size={18} /> Flair du Renard éteint
                   </p>
-                  <p className="title-font" style={{ fontSize: '1.1rem', color: renardResult.hasWolf ? '#ef4444' : '#10b981', marginBottom: '1rem' }}>
-                    {renardResult.hasWolf
-                      ? 'AU MOINS UN LOUP SE CACHE DANS CE TRIO !'
-                      : 'AUCUN LOUP DANS CE TRIO (Vous perdez votre flair).'}
+                  <p className="text-font" style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+                    Vous avez définitivement perdu votre flair car aucun loup n'a été détecté dans le dernier trio analysé.
                   </p>
                 </div>
-              ) : (
-                <>
-                  <p className="text-font text-muted" style={{ fontSize: '0.84rem', marginBottom: '0.85rem' }}>
-                    Choisissez un joueur pour flairer s'il y a un loup parmi lui et ses 2 voisins vivants :
-                  </p>
-                  <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '220px', overflowY: 'auto' }}>
-                    {allAlivePlayers.map((j, idx) => (
-                      <li key={j.id}>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const len = allAlivePlayers.length;
-                            const left = allAlivePlayers[(idx - 1 + len) % len];
-                            const right = allAlivePlayers[(idx + 1) % len];
-                            const trio = Array.from(new Set([left, j, right]));
-                            const hasWolf = trio.some(p => isWolf(p));
-                            const trioNames = trio.map(p => p.nom);
-                            setRenardResult({ trioNames, hasWolf });
-                            try {
-                              await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
-                                pouvoir_renard_perdu: me.role === 'renard' ? !hasWolf : false,
-                              });
-                              await updateDoc(doc(db, 'salons', roomId), {
-                                notifications_mj: arrayUnion(
-                                  `Le Renard (${me.nom}) a flairé [${trioNames.join(', ')}] → ${hasWolf ? 'Présence de Loup' : 'Aucun Loup (flair perdu)'}.`,
-                                ),
-                              });
-                            } catch (e) { console.error(e); }
-                          }}
-                          className="btn-secondary text-font"
-                          style={{ width: '100%', justifyContent: 'flex-start' }}
-                        >
-                          <ScanSearch size={15} style={{ color: '#f97316' }} />
-                          <span>Flairer {j.nom} et ses 2 voisins</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </div>
-          )}
+              );
+            }
+
+            if (hasFlairedTonight || activeResult) {
+              return (
+                <div style={{ padding: '1.15rem', background: 'rgba(249,115,22,0.1)', border: '1.5px solid #f97316', borderRadius: '12px', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                    <h3 className="title-font" style={{ color: '#f97316', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.05rem', margin: 0 }}>
+                      <ScanSearch size={20} /> Flair du Renard (Effectué ce soir)
+                    </h3>
+                    <span style={{ fontSize: '0.74rem', background: 'rgba(249,115,22,0.2)', color: '#fb923c', padding: '2px 8px', borderRadius: '8px', fontWeight: 600 }}>
+                      1 fois par nuit
+                    </span>
+                  </div>
+
+                  <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
+                    {activeResult ? (
+                      <>
+                        <p className="text-font" style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                          Trio flairé cette nuit : <strong style={{ color: '#f97316' }}>{activeResult.trioNames.join(', ')}</strong>
+                        </p>
+                        <p className="title-font" style={{ fontSize: '1.08rem', color: activeResult.hasWolf ? '#ef4444' : '#10b981', marginBottom: '0.5rem' }}>
+                          {activeResult.hasWolf
+                            ? 'AU MOINS UN LOUP SE CACHE DANS CE TRIO !'
+                            : 'AUCUN LOUP DANS CE TRIO.'}
+                        </p>
+                        <p className="text-font" style={{ margin: 0, fontSize: '0.82rem', color: activeResult.hasWolf ? '#10b981' : '#f87171' }}>
+                          {activeResult.hasWolf
+                            ? 'Votre instinct est intact : vous conserverez votre flair pour la nuit prochaine.'
+                            : 'Aucun loup décelé : vous avez perdu votre flair.'}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-font" style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-color)' }}>
+                        Vous avez choisi de préserver votre flair pour cette nuit.
+                      </p>
+                    )}
+                  </div>
+
+                  <div style={{ marginTop: '0.75rem', padding: '8px 10px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+                    <p className="text-font text-muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                      Le renard ne peut flairer qu'une seule fois dans une nuit entière. Votre flair sera à nouveau disponible la nuit prochaine.
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div style={{ padding: '1.15rem', background: 'rgba(249,115,22,0.1)', border: '1.5px solid #f97316', borderRadius: '12px', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <h3 className="title-font" style={{ color: '#f97316', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.05rem', margin: 0 }}>
+                    <ScanSearch size={20} /> Flair du Renard
+                  </h3>
+                  <span style={{ fontSize: '0.74rem', background: 'rgba(249,115,22,0.2)', color: '#fb923c', padding: '2px 8px', borderRadius: '8px', fontWeight: 600 }}>
+                    1 seule fois par nuit
+                  </span>
+                </div>
+
+                <p className="text-font text-muted" style={{ fontSize: '0.84rem', marginBottom: '0.85rem' }}>
+                  Vous ne pouvez flairer qu'<strong>une seule fois dans toute la nuit</strong>. Choisissez un habitant pour détecter la présence d'au moins un Loup-Garou parmi lui et ses 2 voisins vivants :
+                </p>
+
+                <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '220px', overflowY: 'auto', marginBottom: '0.85rem' }}>
+                  {allAlivePlayers.map((j, idx) => (
+                    <li key={j.id}>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const len = allAlivePlayers.length;
+                          const left = allAlivePlayers[(idx - 1 + len) % len];
+                          const right = allAlivePlayers[(idx + 1) % len];
+                          const trio = Array.from(new Set([left, j, right]));
+                          const hasWolf = trio.some(p => isWolf(p));
+                          const trioNames = trio.map(p => p.nom);
+                          const isLost = me.role === 'renard' ? !hasWolf : false;
+
+                          setRenardResult({ trioNames, hasWolf, numero_jour: currentDayNum });
+                          try {
+                            await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
+                              flair_nuit_utilise: true,
+                              dernier_flair_nuit: currentDayNum,
+                              pouvoir_renard_perdu: isLost,
+                              dernier_flair_resultat: {
+                                trioNames,
+                                hasWolf,
+                                numero_jour: currentDayNum,
+                              },
+                            });
+                            await updateDoc(doc(db, 'salons', roomId), {
+                              notifications_mj: arrayUnion(
+                                `Le Renard (${me.nom}) a flairé [${trioNames.join(', ')}] → ${hasWolf ? 'Présence de Loup détectée' : 'Aucun Loup (flair perdu)'}.`,
+                              ),
+                            });
+                          } catch (e) { console.error(e); }
+                        }}
+                        className="btn-secondary text-font"
+                        style={{ width: '100%', justifyContent: 'flex-start' }}
+                      >
+                        <ScanSearch size={15} style={{ color: '#f97316' }} />
+                        <span>Flairer {j.nom} et ses 2 voisins</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await updateDoc(doc(db, 'salons', roomId, 'joueurs', me.id), {
+                        flair_nuit_utilise: true,
+                        dernier_flair_nuit: currentDayNum,
+                      });
+                      await updateDoc(doc(db, 'salons', roomId), {
+                        notifications_mj: arrayUnion(
+                          `Le Renard (${me.nom}) a choisi de ne pas flairer cette nuit pour préserver son flair.`,
+                        ),
+                      });
+                    } catch (e) { console.error(e); }
+                  }}
+                  className="btn-secondary text-font"
+                  style={{ width: '100%', borderColor: 'rgba(255,255,255,0.15)', color: 'var(--text-muted)', fontSize: '0.82rem' }}
+                >
+                  Ne pas flairer cette nuit (Préserver son flair)
+                </button>
+              </div>
+            );
+          })()}
 
           {/* COMÉDIEN */}
           {me.role === 'comedien' && salonData.roles_dispo_comedien && salonData.roles_dispo_comedien.length > 0 && (
