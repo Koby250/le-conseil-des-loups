@@ -67,6 +67,8 @@ export function createBotPlayerObject(name, cardIndex = null, assignedRole = '')
     flair_nuit_utilise: false,
     dernier_flair_nuit: null,
     dernier_flair_resultat: null,
+    pouvoirs_perdus_ancien: false,
+    ancien_role: null,
     proposition_role: null,
   };
 }

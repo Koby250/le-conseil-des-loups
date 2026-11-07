@@ -677,15 +677,45 @@ export async function executeApplyDaySentenceAuto(roomId, salonData, joueurs = [
     }
   });
 
+  // Malédiction de l'Ancien : si l'Ancien meurt suite au vote du village
+  const ancienDiedByVote = victimesVerdict.some(v => v.role === 'ancien');
+  if (ancienDiedByVote) {
+    notifs.push("Malédiction de l'Ancien : Le village a voté contre son aîné ! Tous les villageois à pouvoirs perdent leurs dons et redeviennent de Simples Villageois.");
+    joueurs.forEach(j => {
+      // Les loups, les infectés, le chasseur et les simples villageois ne sont pas transformés
+      if (
+        !deadIds.has(j.id) &&
+        !isWolf(j) &&
+        j.role !== 'chasseur' &&
+        j.role !== 'villageois'
+      ) {
+        batch.update(doc(db, 'salons', roomId, 'joueurs', j.id), {
+          ancien_role: j.ancien_role || j.role,
+          role: 'villageois',
+          pouvoirs_perdus_ancien: true,
+          pouvoir_utilise: true,
+          pouvoir_renard_perdu: true,
+          flair_nuit_utilise: true,
+          potion_vie_utilisee: true,
+          potion_mort_utilisee: true,
+          illusion_dispo: false,
+          gracie_idiot: true,
+        });
+      }
+    });
+  }
+
   const updatedJoueurs = joueurs.map(j => deadIds.has(j.id) ? { ...j, statut_joueur: 'mort' } : j);
   const gameEnd = checkGameEnd(updatedJoueurs);
 
   const salonUpd = {
     statut: gameEnd || 'jour_resolution',
     condamne_jour: condamneLabel,
+    malediction_ancien_active: Boolean(ancienDiedByVote || salonData.malediction_ancien_active),
     verdict_details: {
       type: 'condamnation',
       victimes: victimesVerdict,
+      malediction_ancien: Boolean(ancienDiedByVote),
       timestamp: Date.now(),
     },
     auto_mj_phase_started_at: Date.now(),

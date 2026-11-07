@@ -197,6 +197,28 @@ function VerdictResolutionCard({ roomId, salonData, joueurs, onSelectRole, isMai
         </div>
       )}
 
+      {/* Malédiction de l'Ancien si l'Ancien a péri au vote */}
+      {(salonData?.verdict_details?.malediction_ancien || salonData?.malediction_ancien_active) && (
+        <div
+          style={{
+            marginTop: '0.85rem',
+            padding: '1rem',
+            background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.22), rgba(185, 28, 28, 0.12))',
+            border: '2px solid #ef4444',
+            borderRadius: '12px',
+            textAlign: 'left',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f87171', marginBottom: '6px' }}>
+            <Hourglass size={20} />
+            <strong style={{ fontSize: '1.02rem' }}>La Malédiction de l'Ancien s'abat sur le village !</strong>
+          </div>
+          <p className="text-font" style={{ margin: 0, fontSize: '0.86rem', color: 'var(--text-color)', lineHeight: 1.45 }}>
+            Le village a commis l'irréparable en exécutant l'Ancien au vote. Bouleversés par ce sacrilège, tous les villageois possédant des pouvoirs (Voyante, Sorcière, Salvateur, Renard, etc.) perdent immédiatement leurs dons et redeviennent de <strong>Simples Villageois</strong> (seuls le Chasseur et les Loups conservent leurs attributs).
+          </p>
+        </div>
+      )}
+
       {/* Alerte si le chasseur prépare son tir */}
       {chasseurEnAttente && (
         <div style={{ marginTop: '0.75rem', padding: '0.7rem 0.9rem', background: 'rgba(239, 68, 68, 0.15)', border: '1px dashed #ef4444', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.82rem', color: '#fca5a5' }}>
@@ -512,6 +534,8 @@ export default function PlayerScreen() {
         flair_nuit_utilise: false,
         dernier_flair_nuit: null,
         dernier_flair_resultat: null,
+        pouvoirs_perdus_ancien: false,
+        ancien_role: null,
         proposition_role: null,
       });
       localStorage.setItem(`loup_garou_${roomId}_playerId`, stableId);
@@ -972,7 +996,13 @@ export default function PlayerScreen() {
                       <RoleChip
                         roleObj={rObj}
                         onSelectRole={r => setInspectRole(r)}
-                        suffix={j.est_infecte ? '(Infecté)' : undefined}
+                        suffix={
+                          j.est_infecte
+                            ? '(Infecté)'
+                            : j.pouvoirs_perdus_ancien && j.ancien_role
+                              ? `(Ex-${getRole(j.ancien_role)?.name || j.ancien_role})`
+                              : undefined
+                        }
                       />
                     ) : (
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{j.role || '—'}</span>
@@ -1223,7 +1253,13 @@ export default function PlayerScreen() {
                       <RoleChip
                         roleObj={rObj}
                         onSelectRole={r => setInspectRole(r)}
-                        suffix={j.est_infecte ? '(Infecté)' : undefined}
+                        suffix={
+                          j.est_infecte
+                            ? '(Infecté)'
+                            : j.pouvoirs_perdus_ancien && j.ancien_role
+                              ? `(Ex-${getRole(j.ancien_role)?.name || j.ancien_role})`
+                              : undefined
+                        }
                       />
                     ) : (
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
@@ -1278,7 +1314,24 @@ export default function PlayerScreen() {
             <h1 className="player-title" style={{ fontSize: '1.55rem', margin: 0, color: 'var(--text-color)' }}>{me.nom}</h1>
             <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               {showRole && myRoleData ? (
-                <RoleChip roleObj={myRoleData} onSelectRole={r => setInspectRole(r)} />
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <RoleChip
+                    roleObj={myRoleData}
+                    onSelectRole={r => setInspectRole(r)}
+                    suffix={
+                      me.est_infecte
+                        ? '(Infecté)'
+                        : me.pouvoirs_perdus_ancien && me.ancien_role
+                          ? `(Ex-${getRole(me.ancien_role)?.name || me.ancien_role})`
+                          : undefined
+                    }
+                  />
+                  {me.pouvoirs_perdus_ancien && (
+                    <span style={{ fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '6px', padding: '2px 6px', fontWeight: 700 }}>
+                      Ancien exécuté : pouvoirs perdus
+                    </span>
+                  )}
+                </div>
               ) : (
                 <span className="text-font" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600 }}>
                   <Lock size={13} /> Identité secrète masquée
@@ -1321,6 +1374,32 @@ export default function PlayerScreen() {
         {/* ── SECRETS DU JOUEUR : affichés uniquement si showRole ──────────────── */}
         {showRole && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '1rem', textAlign: 'left' }}>
+
+            {/* Malédiction de l'Ancien si le joueur a perdu ses pouvoirs */}
+            {me.pouvoirs_perdus_ancien && (
+              <div
+                style={{
+                  padding: '1rem 1.15rem',
+                  background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.22) 0%, rgba(185, 28, 28, 0.12) 100%)',
+                  border: '1.5px solid #ef4444',
+                  borderRadius: '14px',
+                  color: '#fee2e2',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f87171', fontWeight: 800, fontSize: '0.96rem', marginBottom: '0.35rem' }}>
+                  <Skull size={18} /> Malédiction de l'Ancien : Vos pouvoirs sont anéantis !
+                </div>
+                <p style={{ margin: '0 0 0.55rem', fontSize: '0.84rem', lineHeight: 1.45, color: 'var(--text-color)' }}>
+                  L'Ancien a été condamné au vote par le village. En punition, vous avez perdu l'intégralité de vos pouvoirs surnaturels et êtes redevenu un <strong>Simple Villageois</strong>.
+                </p>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.35)', padding: '5px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)' }}>
+                  <span>Rôle d'origine :</span>
+                  <strong style={{ color: '#f87171' }}>{getRole(me.ancien_role)?.name || me.ancien_role || 'Rôle spécial'}</strong>
+                  <span>&rarr;</span>
+                  <strong style={{ color: '#34d399' }}>Simple Villageois</strong>
+                </div>
+              </div>
+            )}
 
             {/* Carte collectionnable du rôle */}
             {myRoleData && (
@@ -2989,7 +3068,13 @@ export default function PlayerScreen() {
                       <RoleChip
                         roleObj={rObj}
                         onSelectRole={r => setInspectRole(r)}
-                        suffix={j.est_infecte ? '(Infecté)' : undefined}
+                        suffix={
+                          j.est_infecte
+                            ? '(Infecté)'
+                            : j.pouvoirs_perdus_ancien && j.ancien_role
+                              ? `(Ex-${getRole(j.ancien_role)?.name || j.ancien_role})`
+                              : undefined
+                        }
                       />
                     ) : (
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>

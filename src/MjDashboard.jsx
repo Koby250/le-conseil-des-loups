@@ -429,6 +429,7 @@ export default function MjDashboard() {
         cible_corbeau: null,
         illusion_active: false,
         infection_active: false,
+        malediction_ancien_active: false,
         // ── Champs jour ──
         la_liste_accuses: [],
         votes: {},
@@ -1173,17 +1174,42 @@ export default function MjDashboard() {
           }
         });
 
-        // Ancien tué par le village
-        if (condamne.role === 'ancien') {
-          notifs.push(`Attention : Le village a exécuté l'Ancien (${condamneNom}) ! Selon la règle, les villageois perdent leurs pouvoirs.`);
+        // Malédiction de l'Ancien : s'il est exécuté par le vote du village
+        const ancienDiedByVote = victimesVerdict.some(v => v.role === 'ancien');
+        if (ancienDiedByVote) {
+          notifs.push("Malédiction de l'Ancien : Le village a voté contre son patriarche ! Tous les villageois à pouvoirs perdent leurs dons et redeviennent de Simples Villageois.");
+          joueurs.forEach(j => {
+            // Les loups, les infectés, le chasseur et les simples villageois ne sont pas transformés
+            if (
+              !deadIds.has(j.id) &&
+              !isWolf(j) &&
+              j.role !== 'chasseur' &&
+              j.role !== 'villageois'
+            ) {
+              batch.update(doc(db, 'salons', roomId, 'joueurs', j.id), {
+                ancien_role: j.ancien_role || j.role,
+                role: 'villageois',
+                pouvoirs_perdus_ancien: true,
+                pouvoir_utilise: true,
+                pouvoir_renard_perdu: true,
+                flair_nuit_utilise: true,
+                potion_vie_utilisee: true,
+                potion_mort_utilisee: true,
+                illusion_dispo: false,
+                gracie_idiot: true,
+              });
+            }
+          });
         }
 
         const salonUpd = {
           statut: 'jour_resolution',
           condamne_jour: condamneLabel,
+          malediction_ancien_active: Boolean(ancienDiedByVote || salonData.malediction_ancien_active),
           verdict_details: {
             type: 'condamnation',
             victimes: victimesVerdict,
+            malediction_ancien: Boolean(ancienDiedByVote),
             timestamp: Date.now(),
           },
         };
@@ -1298,6 +1324,7 @@ export default function MjDashboard() {
         cible_corbeau: null,
         illusion_active: false,
         infection_active: false,
+        malediction_ancien_active: false,
         la_liste_accuses: [],
         votes: {},
         chat_loups: [],
@@ -1339,6 +1366,8 @@ export default function MjDashboard() {
           flair_nuit_utilise: false,
           dernier_flair_nuit: null,
           dernier_flair_resultat: null,
+          pouvoirs_perdus_ancien: false,
+          ancien_role: null,
           proposition_role: null,
         });
       });
@@ -2519,6 +2548,16 @@ export default function MjDashboard() {
                   </div>
                 )}
               </div>
+              {(salonData.verdict_details?.malediction_ancien || salonData.malediction_ancien_active) && (
+                <div style={{ padding: '12px 14px', background: 'rgba(239,68,68,0.15)', border: '1.5px solid #ef4444', borderRadius: '10px' }}>
+                  <p className="title-font" style={{ margin: '0 0 4px', color: '#ef4444', fontSize: '0.96rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Hourglass size={18} /> Malédiction de l'Ancien activée !
+                  </p>
+                  <p className="text-font" style={{ margin: 0, fontSize: '0.84rem', color: '#fca5a5' }}>
+                    Le village a condamné son aîné au vote : tous les villageois à pouvoirs magiques perdent leurs facultés et redeviennent de Simples Villageois (seuls le Chasseur et les Loups restent intacts).
+                  </p>
+                </div>
+              )}
               {chasseurActif ? (
                 <button disabled className="btn-secondary title-font" style={{ width: '100%', padding: '15px' }}>
                   <Hourglass size={18} /> En attente du tir de vengeance du Chasseur ({chasseurActif.nom})...
@@ -2652,6 +2691,10 @@ export default function MjDashboard() {
                   if (j.choix_chien) extraTags.push(`Choix: ${j.choix_chien === 'loup' ? 'Loup' : 'Village'}`);
                   if (j.gracie_idiot) extraTags.push('Gracié (sans vote)');
                   if (Array.isArray(salonData.couple) && salonData.couple.includes(j.id)) extraTags.push('En couple');
+                  if (j.pouvoirs_perdus_ancien) {
+                    const ancName = j.ancien_role ? (getRole(j.ancien_role)?.name || j.ancien_role) : 'Pouvoir';
+                    extraTags.push(`Ex-${ancName} — Ancien mort`);
+                  }
 
                   return (
                     <tr key={j.id} style={{ borderBottom: '1px solid var(--card-border)', opacity: j.statut_joueur === 'mort' ? 0.55 : 1 }}>
